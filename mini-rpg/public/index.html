@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <title>Mini RPG — Client &amp; Server</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <canvas id="game" tabindex="0"></canvas>
+
+  <div id="hud">
+    <div class="bar-row"><span id="level">Lv 1</span>
+      <div class="bar hp"><div id="hp-fill"></div><span id="hp-text"></span></div>
+    </div>
+    <div class="bar-row"><span class="xp-label">XP</span>
+      <div class="bar xp"><div id="xp-fill"></div></div>
+    </div>
+    <div id="online">🟢 0 online</div>
+  </div>
+
+  <div id="chat">
+    <div id="chat-log"></div>
+    <input id="chat-input" placeholder="Nhấn Enter để chat..." maxlength="120" autocomplete="off" />
+  </div>
+
+  <div id="touch-ui" hidden>
+    <div id="joystick"><div id="stick"></div></div>
+    <button id="atk-btn">⚔️</button>
+  </div>
+
+  <div id="join-overlay">
+    <div class="panel">
+      <h1>⚔️ Mini RPG</h1>
+      <p>Phiêu lưu cùng bạn bè, đánh slime, lên cấp!</p>
+      <input id="name-input" placeholder="Tên nhân vật..." maxlength="16" autocomplete="off" />
+      <button id="join-btn">Vào game</button>
+      <p class="hint">WASD / mũi tên: di chuyển · Space: đánh · Enter: chat</p>
+    </div>
+  </div>
+
+  <script src="client.js"></script>
+</body>
+</html>
