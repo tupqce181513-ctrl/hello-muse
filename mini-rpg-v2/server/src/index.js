@@ -14,20 +14,56 @@ const { World } = require('./world');
 const systems = require('./systems');
 const { Router } = require('./net/router');
 const schemas = require('./net/schemas');
+const { JsonFileStore, hashToken, newToken } = require('./persistence/store');
 
 const world = new World(config);
+
+/* --- Persistence: JSON file store (MVP, single server) --- */
+const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '..', 'data');
+const store = new JsonFileStore(path.join(DATA_DIR, 'players.json'));
+
+async function savePlayer(p) {
+  if (!p) return;
+  const rec = world.toRecord(p);
+  p.savedAt = rec.savedAt;
+  await store.save(rec);
+}
+
+/* Autosave every 30s — never inside the tick loop.
+ * Data-loss window: up to 30s of kills/XP/gold if the server crashes;
+ * level-ups, quest turn-ins and boss kills save immediately. */
+const AUTOSAVE_MS = 30000;
+setInterval(() => {
+  for (const p of world.players.values()) savePlayer(p);
+}, AUTOSAVE_MS);
+
+/** One active socket per character: a new connection replaces the old one. */
+function attachSocket(p, ws) {
+  if (p.ws && p.ws !== ws && p.ws.readyState === WebSocket.OPEN) {
+    try { p.ws.close(4001, 'replaced by new connection'); } catch { /* gone */ }
+  }
+  p.ws = ws;
+}
 
 /* Game-event announcements live here — swap/edit without touching the loop. */
 world.bus.on('player:join', (p) => world.addChat('Server', `${p.name} đã vào game`));
 world.bus.on('player:leave', (p) => world.addChat('Server', `${p.name} đã rời game`));
 world.bus.on('player:death', (p) => world.addChat('Server', `${p.name} đã gục ngã...`));
 world.bus.on('player:respawn', (p) => world.addChat('Server', `${p.name} đã hồi sinh`));
-world.bus.on('player:levelup', (p) => world.addChat('Server', `${p.name} đã lên cấp ${p.level}! (+1 điểm kỹ năng)`));
+world.bus.on('player:levelup', (p) => {
+  world.addChat('Server', `${p.name} đã lên cấp ${p.level}! (+1 điểm kỹ năng)`);
+  savePlayer(p); // important progress: never lost to a crash
+});
 world.bus.on('quest:accepted', (p, q) => world.addChat('Server', `📜 ${p.name} đã nhận nhiệm vụ: ${q.name}`));
 world.bus.on('quest:ready', (p, q) => world.addChat('Server', `✅ ${p.name} đã hoàn thành "${q.name}" — về gặp ${questGiverName(q)} để trả!`));
-world.bus.on('quest:turnin', (p, q, r) => world.addChat('Server', `🎁 ${p.name} nhận thưởng "${q.name}" (+${r.xp || 0} XP, +${r.gold || 0} vàng)`));
-world.bus.on('boss:down', (s, names) => world.addChat('Server',
-  `👑 Slime King đã gục ngã! Vinh danh: ${names.length ? names.join(', ') : 'không ai'}`));
+world.bus.on('quest:turnin', (p, q, r) => {
+  world.addChat('Server', `🎁 ${p.name} nhận thưởng "${q.name}" (+${r.xp || 0} XP, +${r.gold || 0} vàng)`);
+  savePlayer(p); // important progress: never lost to a crash
+});
+world.bus.on('boss:down', (s, names) => {
+  world.addChat('Server', `👑 Slime King đã gục ngã! Vinh danh: ${names.length ? names.join(', ') : 'không ai'}`);
+  for (const p of world.players.values()) savePlayer(p);
+});
 
 function questGiverName(q) {
   const npc = config.npcs.find((n) => n.id === q.giver);
@@ -74,6 +110,7 @@ const RATE_LIMITS = {
   unlock:   { n: 5,  per: 1000 },
   allocate: { n: 5,  per: 1000 },
   npc:      { n: 5,  per: 1000 },
+  resume:   { n: 5,  per: 10000 },
   quest_accept: { n: 5, per: 1000 },
   quest_turnin: { n: 5, per: 1000 },
   use_item:  { n: 4,  per: 1000 },
@@ -110,16 +147,53 @@ function broadcast(msg) {
 
 const router = new Router();
 
-router.on('join', schemas.Join, (ctx, m) => {
+router.on('join', schemas.Join, async (ctx, m) => {
   if (!checkRate(ctx, 'join') || ctx.player) return;
   const validSkins = new Set(config.skins.map((s) => s.id));
   const skinId = validSkins.has(m.skin) ? m.skin : config.skins[0].id;
   ctx.player = ctx.world.addPlayer(m.name, skinId);
+  attachSocket(ctx.player, ctx.ws);
+  // stable identity + resume token (the display name is NOT the identity)
+  const token = newToken();
+  await store.bindToken(hashToken(token), ctx.player.id);
+  await savePlayer(ctx.player);
   ctx.ws.send(JSON.stringify({
     t: 'welcome',
     id: ctx.player.id,
+    name: ctx.player.name,
+    token, // keep on this device; raw tokens are never stored server-side
     map: ctx.world.map, // client renders + same tileSize for reference
     npcs: config.npcs,  // static NPCs (client draws them)
+    chat: ctx.world.chatLog,
+  }));
+});
+
+router.on('resume', schemas.Resume, async (ctx, m) => {
+  if (!checkRate(ctx, 'resume') || ctx.player) return;
+  const oldHash = hashToken(m.token);
+  const id = await store.tokenToId(oldHash);
+  const rec = id ? await store.getById(id) : null;
+  if (!rec) {
+    ctx.ws.send(JSON.stringify({ t: 'resume_failed', reason: 'invalid_token' }));
+    return;
+  }
+  await store.unbindToken(oldHash); // token rotation: old token dies here
+  let p = ctx.world.players.get(id);
+  if (!p) p = ctx.world.restorePlayer(rec); // e.g. after a server restart
+  // else: player object is live — it is fresher than the save, keep it
+  ctx.player = p;
+  attachSocket(p, ctx.ws);
+  const token = newToken();
+  await store.bindToken(hashToken(token), p.id);
+  await savePlayer(p);
+  ctx.ws.send(JSON.stringify({
+    t: 'welcome',
+    id: p.id,
+    name: p.name,
+    token,
+    resumed: true,
+    map: ctx.world.map,
+    npcs: config.npcs,
     chat: ctx.world.chatLog,
   }));
 });
@@ -212,8 +286,14 @@ wss.on('connection', (ws) => {
   ws.isAlive = true;
   ws.on('pong', () => { ws.isAlive = true; });
   ws.on('message', (raw) => router.handle(ctx, raw));
-  ws.on('close', () => {
-    if (ctx.player) world.removePlayer(ctx.player.id);
+  ws.on('close', async () => {
+    // only the active socket owns the player; a replaced ghost closing
+    // must not delete the player the new connection is using
+    if (ctx.player && ctx.player.ws === ws) {
+      ctx.player.ws = null;
+      await savePlayer(ctx.player); // save on disconnect
+      world.removePlayer(ctx.player.id);
+    }
   });
 });
 

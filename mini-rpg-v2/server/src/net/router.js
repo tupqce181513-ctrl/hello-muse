@@ -28,7 +28,10 @@ class Router {
     if (!h) return; // unknown type — ignore
     const r = h.schema.safeParse(m);
     if (!r.success) return; // invalid payload — ignore
-    h.handler(ctx, r.data);
+    // handlers may be async (persistence); never let a rejection crash the loop
+    Promise.resolve(h.handler(ctx, r.data)).catch((err) => {
+      console.error('[router] handler error for', m.t, err.message);
+    });
   }
 }
 

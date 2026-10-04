@@ -9,8 +9,8 @@
 let nextId = 1;
 
 class Entity {
-  constructor(x, y, radius) {
-    this.id = nextId++;
+  constructor(x, y, radius, id) {
+    this.id = id != null ? id : nextId++;
     this.x = x;
     this.y = y;
     this.radius = radius;
@@ -19,8 +19,8 @@ class Entity {
 }
 
 class Player extends Entity {
-  constructor(name, skinId, x, y, cfg) {
-    super(x, y, 16);
+  constructor(name, skinId, x, y, cfg, id) {
+    super(x, y, 16, id);
     this.kind = 'player';
     this.name = name;
     this.skinId = skinId;
@@ -46,6 +46,8 @@ class Player extends Entity {
     this.atkAnim = 0;
     this.hurtCd = 0;
     this.respawnAt = 0;
+    this.savedAt = 0;   // last persistence timestamp (shown in the client HUD)
+    this.ws = null;     // active socket (single-connection enforcement)
   }
   dmgMult() { return 1 + 0.15 * this.passives.power; }
   speedMult() { return 1 + 0.08 * this.passives.swift; }
@@ -59,6 +61,7 @@ class Player extends Entity {
       sp: this.sp, gold: this.gold,
       inv: this.inv, equip: this.equip,
       potionCd: +this.potionCd.toFixed(1),
+      savedAt: this.savedAt,
       quests: this.quests, questsDone: this.questsDone,
       skills: this.skills, passives: this.passives,
       cds: Object.fromEntries(

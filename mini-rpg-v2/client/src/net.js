@@ -6,11 +6,15 @@ import { WS_URL } from './api.js';
  *   'welcome' ({ id, map, npcs, chat }), 'state' ({ players, monsters, projectiles, items }),
  *   'chat' ({ name, text }), 'npc_dialog' ({ npc, name, quests })
  *   'status'  ('connecting' | 'open' | 'closed' | 'error')
+ *   'resume_failed' — stored token was rejected; the UI should show the join form.
  *
- * Dev note: when running the Vite dev server, point it at the game server with
- *   echo 'VITE_WS_URL=ws://localhost:8080' > .env
- * (API calls then go through the /api proxy in vite.config.js.)
+ * Session resume: the server issues a random token at join/resume, kept in
+ * localStorage on THIS device. The display name is never used as the identity.
+ * Reconnects use capped exponential backoff and never open a second socket.
  */
+const TOKEN_KEY = 'miniRpg.resumeToken';
+const MAX_RECONNECT = 10;
+
 export class Net extends Phaser.Events.EventEmitter {
   constructor() {
     super();
@@ -22,6 +26,10 @@ export class Net extends Phaser.Events.EventEmitter {
     this.map = null; // tile map from 'welcome'
     this.npcs = [];  // static NPCs from 'welcome'
     this.status = 'idle';
+    this.connecting = false;
+    this.manualClose = false;
+    this.reconnectAttempts = 0;
+    this.reconnectTimer = null;
   }
 
   setStatus(s) {
@@ -31,21 +39,35 @@ export class Net extends Phaser.Events.EventEmitter {
   }
 
   connect() {
-    if (this.ws && (this.ws.readyState === 0 || this.ws.readyState === 1)) return;
+    // never open a second socket while one is connecting/open
+    if (this.connecting || (this.ws && (this.ws.readyState === 0 || this.ws.readyState === 1))) return;
+    this.connecting = true;
     this.setStatus('connecting');
     let ws;
     try {
       ws = new WebSocket(WS_URL);
     } catch {
+      this.connecting = false;
       this.setStatus('error');
+      this.scheduleReconnect();
       return;
     }
     this.ws = ws;
-    ws.onopen = () => this.setStatus('open');
+    ws.onopen = () => {
+      this.connecting = false;
+      this.reconnectAttempts = 0;
+      this.setStatus('open');
+      // resume the saved session if this device has a token
+      const token = localStorage.getItem(TOKEN_KEY);
+      if (token) this.send({ t: 'resume', token });
+      else this.emit('need_join');
+    };
     ws.onerror = () => this.setStatus('error');
     ws.onclose = () => {
+      this.connecting = false;
       this.setStatus('closed');
       this.emit('chat', { name: 'Server', text: 'Mất kết nối tới server...' });
+      this.scheduleReconnect();
     };
     ws.onmessage = (ev) => {
       let m;
@@ -54,7 +76,13 @@ export class Net extends Phaser.Events.EventEmitter {
         this.myId = m.id;
         this.map = m.map || null;
         this.npcs = m.npcs || [];
+        if (m.token) {
+          try { localStorage.setItem(TOKEN_KEY, m.token); } catch { /* private mode */ }
+        }
         this.emit('welcome', m);
+      } else if (m.t === 'resume_failed') {
+        try { localStorage.removeItem(TOKEN_KEY); } catch { /* ignore */ }
+        this.emit('resume_failed', m);
       } else if (m.t === 'state') {
         this.players = m.players;
         this.monsters = m.monsters; this.projectiles = m.projectiles || [];
@@ -66,6 +94,27 @@ export class Net extends Phaser.Events.EventEmitter {
         this.emit('npc_dialog', m);
       }
     };
+  }
+
+  /** Capped exponential backoff: 1s, 2s, 4s … max 30s, gives up after 10 tries. */
+  scheduleReconnect() {
+    if (this.manualClose || this.reconnectTimer) return;
+    if (this.reconnectAttempts >= MAX_RECONNECT) {
+      this.emit('chat', { name: 'Server', text: 'Không nối lại được. Hãy tải lại trang.' });
+      return;
+    }
+    const delay = Math.min(30000, 1000 * 2 ** this.reconnectAttempts);
+    this.reconnectAttempts++;
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      this.connect();
+    }, delay);
+  }
+
+  disconnect() {
+    this.manualClose = true;
+    if (this.reconnectTimer) { clearTimeout(this.reconnectTimer); this.reconnectTimer = null; }
+    if (this.ws) this.ws.close();
   }
 
   send(msg) {

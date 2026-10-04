@@ -155,6 +155,33 @@ Chuỗi hoàn chỉnh: Diệt Slime → Mảnh Slime → **Thách đấu Slime K
 Trả quest Boss nhận 300 XP + 150 vàng và **Kiếm Vương** — phần thưởng cuối
 chuyến phiêu lưu, kèm thông báo toàn server.
 
+## Giai đoạn 4: lưu tiến trình & nối lại phiên
+
+- **Định danh ổn định**: mỗi nhân vật có UUID do server cấp + **resume token**
+  ngẫu nhiên (64 ký tự hex). Tên hiển thị không bao giờ dùng để lấy dữ liệu.
+- **Storage**: `server/src/persistence/store.js` — interface `PlayerRepository`
+  (sau này thay bằng Redis/SQL không cần sửa game), bản MVP lưu file JSON
+  `server/data/players.json` (đã gitignore) với `schemaVersion`, **ghi atomically**
+  (temp + rename) và **tuần tự hóa** qua hàng đợi promise. Token chỉ lưu dạng
+  **SHA-256 hash** — token gốc chỉ nằm trên thiết bị người chơi.
+- **Lưu gì**: level, XP, điểm kỹ năng, skill/passive, vàng, inventory/equipment,
+  quest, skin, HP, cooldown (dạng timestamp tuyệt đối). Chỉ số dẫn xuất
+  (sát thương vũ khí, HP tối đa...) **tái tính khi load** — không bao giờ cộng dồn.
+- **Khi nào lưu**: autosave mỗi 30s (không ghi trong tick), ngay khi lên cấp /
+  trả quest / hạ boss / ngắt kết nối.
+- **Cửa sổ mất dữ liệu**: nếu server crash, tối đa ~30s tiến trình thường
+  (đánh quái/XP/vàng nhặt) có thể mất; level-up, trả quest, hạ boss thì không
+  bao giờ mất vì đã lưu ngay. Vị trí không lưu — nối lại sẽ spawn ở điểm an toàn.
+- **Client**: token trong localStorage; tự nối lại khi mở trang/mất mạng với
+  **backoff mũ giới hạn** (1s→30s, tối đa 10 lần), không bao giờ mở 2 socket.
+  Server chỉ cho **một kết nối active** mỗi nhân vật (kết nối mới đá kết nối cũ),
+  nên không có duplicate player hay thưởng trùng.
+- **Xử lý lỗi**: token sai → `resume_failed`, client xóa token và hiện form tạo
+  mới; file save hỏng → backup `.bak` và bắt đầu sạch; **reconnect không reset
+  cooldown** (cooldown chạy theo thời gian thực, kể cả khi offline).
+- **UI**: góc dưới phải hiện `💾 giờ:lưu-cuối`; màn hình vào game ghi rõ tiến
+  trình lưu trên thiết bị này, chưa đồng bộ giữa thiết bị.
+
 ## Mở rộng thế nào? (ví dụ)
 
 **Thêm quái Goblin:**

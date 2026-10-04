@@ -225,7 +225,7 @@ function bossDown(world, s) {
   const threshold = s.maxHp * 0.05;
   const winners = [];
   for (const [pid, dmg] of Object.entries(s.dmgBy)) {
-    const p = world.players.get(Number(pid));
+    const p = world.players.get(pid); // ids are UUID strings
     if (p && dmg >= threshold) winners.push(p);
   }
   for (const p of winners) {
