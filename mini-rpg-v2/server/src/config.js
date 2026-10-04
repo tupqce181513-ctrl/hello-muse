@@ -42,4 +42,24 @@ module.exports = {
     { id: 'ember',  name: 'Hỏa',      body: '#e67e22', accent: '#8a4b14', hat: 'none' },
     { id: 'shadow', name: 'Bóng đêm', body: '#2d3436', accent: '#636e72', hat: 'hood' },
   ],
+
+  // --- Experience & skills ---
+  // XP needed to go from `level` to `level + 1` (curved: higher levels cost more)
+  xpNeed: (level) => Math.round(100 * Math.pow(level, 1.25)),
+
+  skills: {
+    // Active skills: unlock with skill points, trigger with keys 1/2/3
+    actives: {
+      dash:      { name: 'Lao tới',   icon: '💨', cost: 1, cd: 6,  desc: 'Lướt nhanh về phía đang nhìn' },
+      whirlwind: { name: 'Xoáy kiếm',  icon: '🌀', cost: 2, cd: 8,  desc: 'Gây 150% sát thương lên quái xung quanh' },
+      heal:      { name: 'Hồi máu',    icon: '💚', cost: 2, cd: 20, desc: 'Hồi 40% HP tối đa' },
+    },
+    // Passives: 1 point per level, up to `max`
+    passives: {
+      power: { name: 'Sức mạnh',  icon: '⚔️', max: 5, desc: '+15% sát thương mỗi cấp' },
+      swift: { name: 'Nhanh nhẹn', icon: '🥾', max: 5, desc: '+8% tốc chạy mỗi cấp' },
+      tough: { name: 'Cứng cáp',  icon: '🛡️', max: 5, desc: '+20 HP tối đa mỗi cấp' },
+      crit:  { name: 'Chí mạng',  icon: '💥', max: 5, desc: '+8% tỉ lệ chí mạng (x2 sát thương) mỗi cấp' },
+    },
+  },
 };

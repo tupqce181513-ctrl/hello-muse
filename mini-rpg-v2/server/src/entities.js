@@ -28,6 +28,12 @@ class Player extends Entity {
     this.hp = this.maxHp;
     this.xp = 0;
     this.level = 1;
+    this.sp = 0;                              // skill points (earned on level up)
+    this.skills = [];                         // unlocked active skill ids
+    this.passives = { power: 0, swift: 0, tough: 0, crit: 0 };
+    this.cds = {};                            // skillId -> cooldown seconds remaining
+    this.dashT = 0; this.dashDx = 1; this.dashDy = 0;
+    this.castSeq = 0; this.castSkill = '';    // last cast, for client FX
     this.vx = 0; this.vy = 0;   // movement input (normalized)
     this.fx = 1; this.fy = 0;   // facing direction
     this.atkCd = 0;
@@ -35,14 +41,22 @@ class Player extends Entity {
     this.hurtCd = 0;
     this.respawnAt = 0;
   }
+  dmgMult() { return 1 + 0.15 * this.passives.power; }
+  speedMult() { return 1 + 0.08 * this.passives.swift; }
+  critCh() { return 0.08 * this.passives.crit; }
   serialize() {
     return {
       id: this.id, name: this.name, skin: this.skinId,
       x: Math.round(this.x), y: Math.round(this.y),
       hp: Math.ceil(this.hp), maxHp: this.maxHp,
       xp: this.xp, level: this.level,
+      sp: this.sp, skills: this.skills, passives: this.passives,
+      cds: Object.fromEntries(
+        Object.entries(this.cds).map(([k, v]) => [k, +v.toFixed(1)])
+      ),
+      castSeq: this.castSeq, castSkill: this.castSkill,
       fx: +this.fx.toFixed(2), fy: +this.fy.toFixed(2),
-      color: this.color, dead: this.dead,
+      dead: this.dead,
       atkAnim: +this.atkAnim.toFixed(2),
     };
   }
