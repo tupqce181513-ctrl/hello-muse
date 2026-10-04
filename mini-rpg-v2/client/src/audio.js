@@ -121,6 +121,10 @@ class MusicBox {
       case 'heal': [523, 659, 784].forEach((f, i) => tone(f, f * 1.01, 0.18, 'sine', 0.14, i * 0.1)); break;
       case 'unlock': [440, 554, 659, 880].forEach((f, i) => tone(f, f, 0.1, 'triangle', 0.14, i * 0.07)); break;
       case 'error': tone(140, 110, 0.16, 'square', 0.12); break;
+      case 'quest_accept': [392, 523, 659].forEach((f, i) => tone(f, f, 0.12, 'triangle', 0.14, i * 0.08)); break;
+      case 'quest_ready': [523, 659, 784, 1047].forEach((f, i) => tone(f, f, 0.1, 'sine', 0.14, i * 0.07)); break;
+      case 'quest_turnin': [659, 784, 1047, 1319].forEach((f, i) => tone(f, f, 0.12, 'triangle', 0.14, i * 0.08)); break;
+      case 'pickup': tone(1200, 1800, 0.08, 'sine', 0.1); break;
     }
   }
 }
@@ -138,4 +142,8 @@ export const sfx = {
   heal: () => music.sfx('heal'),
   unlock: () => music.sfx('unlock'),
   error: () => music.sfx('error'),
+  quest_accept: () => music.sfx('quest_accept'),
+  quest_ready: () => music.sfx('quest_ready'),
+  quest_turnin: () => music.sfx('quest_turnin'),
+  pickup: () => music.sfx('pickup'),
 };

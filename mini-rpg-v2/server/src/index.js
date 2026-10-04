@@ -23,6 +23,14 @@ world.bus.on('player:leave', (p) => world.addChat('Server', `${p.name} đã rờ
 world.bus.on('player:death', (p) => world.addChat('Server', `${p.name} đã gục ngã...`));
 world.bus.on('player:respawn', (p) => world.addChat('Server', `${p.name} đã hồi sinh`));
 world.bus.on('player:levelup', (p) => world.addChat('Server', `${p.name} đã lên cấp ${p.level}! (+1 điểm kỹ năng)`));
+world.bus.on('quest:accepted', (p, q) => world.addChat('Server', `📜 ${p.name} đã nhận nhiệm vụ: ${q.name}`));
+world.bus.on('quest:ready', (p, q) => world.addChat('Server', `✅ ${p.name} đã hoàn thành "${q.name}" — về gặp ${questGiverName(q)} để trả!`));
+world.bus.on('quest:turnin', (p, q, r) => world.addChat('Server', `🎁 ${p.name} nhận thưởng "${q.name}" (+${r.xp || 0} XP, +${r.gold || 0} vàng)`));
+
+function questGiverName(q) {
+  const npc = config.npcs.find((n) => n.id === q.giver);
+  return npc ? npc.name : 'NPC';
+}
 world.bus.on('chat', (m) => broadcast({ t: 'chat', name: m.name, text: m.text }));
 
 /* --- HTTP: static client build + small JSON API --- */
@@ -48,6 +56,7 @@ app.get('/api/skills', (req, res) => {
   for (let lv = 1; lv <= 40; lv++) xpTable[lv] = config.xpNeed(lv);
   res.json({ ...config.skills, xpTable });
 });
+app.get('/api/quests', (req, res) => res.json(config.quests));
 
 /* --- WebSocket: validated message routing --- */
 const server = http.createServer(app);
@@ -62,6 +71,9 @@ const RATE_LIMITS = {
   chat:     { n: 3,  per: 1000 },
   unlock:   { n: 5,  per: 1000 },
   allocate: { n: 5,  per: 1000 },
+  npc:      { n: 5,  per: 1000 },
+  quest_accept: { n: 5, per: 1000 },
+  quest_turnin: { n: 5, per: 1000 },
 };
 function checkRate(ctx, type) {
   const lim = RATE_LIMITS[type];
@@ -102,6 +114,7 @@ router.on('join', schemas.Join, (ctx, m) => {
     t: 'welcome',
     id: ctx.player.id,
     map: ctx.world.map, // client renders + same tileSize for reference
+    npcs: config.npcs,  // static NPCs (client draws them)
     chat: ctx.world.chatLog,
   }));
 });
@@ -140,6 +153,35 @@ router.on('cast', schemas.Cast, (ctx, m) => {
   if (ctx.player) systems.castSkill(ctx.world, ctx.player, m.skill);
 });
 
+router.on('npc', schemas.Npc, (ctx, m) => {
+  if (!checkRate(ctx, 'npc')) return;
+  if (!ctx.player) return;
+  const d = systems.dialogFor(ctx.world, ctx.player, m.npc);
+  if (d) ctx.ws.send(JSON.stringify(d));
+});
+
+router.on('quest_accept', schemas.QuestAccept, (ctx, m) => {
+  if (!checkRate(ctx, 'quest_accept')) return;
+  const p = ctx.player;
+  if (!p) return;
+  const q = ctx.world.cfg.quests.find((qq) => qq.id === m.quest);
+  if (!q || !systems.nearNpc(ctx.world, p, q.giver)) return; // must talk to the giver
+  if (systems.acceptQuest(ctx.world, p, m.quest)) {
+    ctx.ws.send(JSON.stringify(systems.dialogFor(ctx.world, p, q.giver)));
+  }
+});
+
+router.on('quest_turnin', schemas.QuestTurnIn, (ctx, m) => {
+  if (!checkRate(ctx, 'quest_turnin')) return;
+  const p = ctx.player;
+  if (!p) return;
+  const q = ctx.world.cfg.quests.find((qq) => qq.id === m.quest);
+  if (!q || !systems.nearNpc(ctx.world, p, q.giver)) return;
+  if (systems.turnInQuest(ctx.world, p, m.quest)) {
+    ctx.ws.send(JSON.stringify(systems.dialogFor(ctx.world, p, q.giver)));
+  }
+});
+
 router.on('chat', schemas.Chat, (ctx, m) => {
   if (!checkRate(ctx, 'chat')) return;
   if (ctx.player && !ctx.player.dead) ctx.world.addChat(ctx.player.name, m.text);
@@ -164,6 +206,7 @@ setInterval(() => {
   systems.movement(world, dt);
   systems.skillsTick(world, dt);
   systems.slimeAI(world, dt);
+  systems.pickupTick(world);
   systems.respawn(world);
   broadcast({ t: 'state', ...world.snapshot() });
 }, config.tickMs);

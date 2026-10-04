@@ -26,6 +26,52 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #1a2b1e;
 #conn-status[data-status="open"] { color: #69f0ae; }
 #conn-status[data-status="connecting"] { color: #ffd54f; }
 #conn-status[data-status="closed"], #conn-status[data-status="error"] { color: #ff8a80; }
+#gold { margin-top: 4px; font-size: 13px; color: #ffd54f; font-weight: bold; }
+
+/* ---- Quest tracker (top right) ---- */
+#quest-tracker { position: fixed; top: 12px; right: 12px; z-index: 5; max-width: 240px;
+  display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
+.tracker-quest { background: rgba(0,0,0,.6); border: 1px solid rgba(255,213,79,.5);
+  border-radius: 8px; padding: 8px 10px; color: #fff; font-size: 12px; }
+.tracker-quest b { color: #ffe082; display: block; margin-bottom: 4px; }
+.tracker-quest .q-ready { color: #69f0ae; font-weight: bold; margin-left: 6px; }
+
+/* ---- Toasts ---- */
+#toasts { position: fixed; top: 70px; left: 50%; transform: translateX(-50%);
+  z-index: 50; display: flex; flex-direction: column; gap: 8px; align-items: center;
+  pointer-events: none; }
+.toast { background: rgba(20,30,20,.92); border: 1px solid #ffd54f; color: #fff;
+  border-radius: 10px; padding: 10px 16px; font-size: 14px; opacity: 0;
+  transform: translateY(-8px); transition: all .3s; max-width: 88vw; text-align: center; }
+.toast.show { opacity: 1; transform: translateY(0); }
+
+/* ---- NPC dialog ---- */
+#npc-dialog { position: fixed; inset: 0; z-index: 45; display: flex;
+  align-items: center; justify-content: center; background: rgba(0,0,0,.55); }
+#npc-dialog .panel { width: min(440px, 92vw); max-height: 82vh; overflow-y: auto;
+  background: #1d2b20; border: 2px solid #8d6e3f; border-radius: 14px;
+  padding: 18px 20px; color: #fff; }
+#npc-head { display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 6px; }
+#npc-name { font-size: 18px; font-weight: bold; color: #ffe082; }
+#npc-close { background: none; border: none; color: #fff; font-size: 18px; cursor: pointer; }
+#npc-text { font-style: italic; opacity: .9; margin-bottom: 12px; font-size: 14px; }
+.quest-row { border-top: 1px solid rgba(255,255,255,.12); padding: 10px 2px; }
+.quest-row b { font-size: 15px; }
+.quest-row p { font-size: 13px; opacity: .85; margin: 4px 0; }
+.quest-row .obj { font-size: 13px; color: #a5d6a7; }
+.quest-row .reward { font-size: 13px; color: #ffd54f; margin: 4px 0; }
+.quest-row button { background: #2e7d32; color: #fff; border: none; border-radius: 8px;
+  padding: 7px 14px; cursor: pointer; margin-top: 6px; font-size: 14px; }
+.quest-row button.turnin { background: #f9a825; color: #3e2f00; font-weight: bold; }
+.quest-row .q-done { color: #69f0ae; font-size: 13px; }
+.quest-row .q-locked { color: #90a4ae; font-size: 13px; }
+.quest-row .q-active { color: #80d8ff; font-size: 13px; }
+
+/* ---- Touch NPC button ---- */
+#npc-btn { position: fixed; right: 18px; bottom: 110px; width: 60px; height: 60px;
+  font-size: 26px; border-radius: 50%; border: 2px solid #ffd54f;
+  background: rgba(0,0,0,.6); z-index: 21; }
 #music-btn { margin-top: 6px; font-size: 18px; background: rgba(0,0,0,.55);
   border: 1px solid rgba(255,255,255,.25); border-radius: 8px; padding: 4px 10px;
   cursor: pointer; }

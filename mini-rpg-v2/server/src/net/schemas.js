@@ -36,9 +36,24 @@ const Cast = z.object({
   skill: z.string().max(24),
 });
 
+const Npc = z.object({
+  t: z.literal('npc'),
+  npc: z.string().max(24),
+});
+
+const QuestAccept = z.object({
+  t: z.literal('quest_accept'),
+  quest: z.string().max(32),
+});
+
+const QuestTurnIn = z.object({
+  t: z.literal('quest_turnin'),
+  quest: z.string().max(32),
+});
+
 const Chat = z.object({
   t: z.literal('chat'),
   text: z.string().trim().min(1).max(120),
 });
 
-module.exports = { Join, Input, Attack, Unlock, Allocate, Cast, Chat };
+module.exports = { Join, Input, Attack, Unlock, Allocate, Cast, Npc, QuestAccept, QuestTurnIn, Chat };

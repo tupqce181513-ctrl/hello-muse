@@ -17,6 +17,8 @@ class World {
     this.bus = new EventEmitter();
     this.players = new Map(); // id -> Player
     this.slimes = [];
+    this.items = []; // ground loot: { id, item, x, y, expiresAt }
+    this.nextItemId = 1;
     this.chatLog = [];
 
     // Load the shared tile map (same file the client renders)
@@ -106,6 +108,19 @@ class World {
     return m;
   }
 
+  /** Drop a loot item on the ground (single pickup — removed once taken). */
+  dropItem(item, x, y) {
+    const it = {
+      id: this.nextItemId++,
+      item,
+      x: Math.round(x + (Math.random() * 40 - 20)),
+      y: Math.round(y + (Math.random() * 40 - 20)),
+      expiresAt: Date.now() + this.cfg.itemDespawnMs,
+    };
+    this.items.push(it);
+    return it;
+  }
+
   snapshot() {
     return {
       players: [...this.players.values()].map((p) => ({
@@ -113,6 +128,7 @@ class World {
         xpNeed: this.cfg.xpNeed(p.level), // always in sync with the server curve
       })),
       slimes: this.slimes.map((s) => s.serialize()),
+      items: this.items.map((i) => ({ id: i.id, item: i.item, x: i.x, y: i.y })),
     };
   }
 }
