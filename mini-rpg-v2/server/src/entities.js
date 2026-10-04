@@ -62,6 +62,7 @@ class Player extends Entity {
       inv: this.inv, equip: this.equip,
       potionCd: +this.potionCd.toFixed(1),
       savedAt: this.savedAt,
+      respawnIn: this.dead ? Math.max(0, (this.respawnAt - Date.now()) / 1000) : 0,
       quests: this.quests, questsDone: this.questsDone,
       skills: this.skills, passives: this.passives,
       cds: Object.fromEntries(

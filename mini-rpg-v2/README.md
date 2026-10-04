@@ -182,6 +182,38 @@ chuyến phiêu lưu, kèm thông báo toàn server.
 - **UI**: góc dưới phải hiện `💾 giờ:lưu-cuối`; màn hình vào game ghi rõ tiến
   trình lưu trên thiết bị này, chưa đồng bộ giữa thiết bị.
 
+## Giai đoạn 5: hoàn thiện client & UX
+
+### HUD
+- Thanh HP (số cụ thể) / XP, vàng 🪙, quest tracker, **cooldown kỹ năng dạng số**
+  (giây, thập phân khi < 1s), túi đồ 12 ô, trạng thái mạng, giờ lưu cuối —
+  tất cả cập nhật từ snapshot server.
+
+### Hiệu ứng theo kết quả server
+- **Số damage bay** (vàng cho đòn đánh ra, đỏ cho sát thương nhận) từ `dmgEvents`
+  của server — client chỉ hiển thị, không tự tính.
+- **Banner "LÊN CẤP!"** toàn màn hình, hiệu ứng trúng đòn/nhặt đồ/hoàn thành
+  quest như cũ. Particle có giới hạn (`maxParticles`) để không tụt FPS khi
+  đông người spam skill.
+
+### Bố trí không chồng lấn
+- Đã kiểm toán vị trí mọi phần tử ở **360×800** (mobile) và **1366×768**
+  (desktop): chat, skill bar, joystick, nút đánh ⚔️ (88px, dễ bấm), nút NPC 💬
+  (nằm trên nút đánh), các nút tiện ích gom vào HUD.
+- Mobile: skill bar nổi trên hàng nút cảm ứng, chat dock phía trên skill bar.
+
+### Người mới & cài đặt
+- **Hướng dẫn nhanh** 📖 hiện lần đầu vào game (lưu cờ localStorage), mở lại
+  bằng nút ❓.
+- **Màn hình chết** 💀 với đếm ngược hồi sinh lấy từ server + mẹo chơi.
+- **Nhạc và SFX chỉnh riêng** (🔊/🔔), nhớ lựa chọn trên thiết bị.
+
+### Hiệu năng
+- Giới hạn particle, dọn object/view đã mất khỏi world mỗi snapshot, pool số
+  damage (24). Nhấn **F3** để hiện đồng hồ FPS đo thực tế.
+- Chưa công bố con số FPS hay số người chơi tối đa — các giới hạn particle
+  là chọn trước, cần đo trên thiết bị mục tiêu trước khi tinh chỉnh.
+
 ## Mở rộng thế nào? (ví dụ)
 
 **Thêm quái Goblin:**

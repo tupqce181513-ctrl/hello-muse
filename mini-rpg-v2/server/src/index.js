@@ -310,6 +310,7 @@ setInterval(() => {
   systems.pickupTick(world);
   systems.respawn(world);
   broadcast({ t: 'state', ...world.snapshot() });
+  world.dmgEvents.length = 0; // damage numbers are per-tick events
 }, config.tickMs);
 
 server.listen(config.port, () => {

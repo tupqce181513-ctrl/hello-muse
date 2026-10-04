@@ -19,9 +19,13 @@
     <div id="online">🟢 0 online</div>
     <div id="gold">🪙 0</div>
     <div id="conn-status" data-status="idle">⚪ Chưa kết nối</div>
-    <button id="music-btn" title="Bật/tắt nhạc">🔊</button>
-    <button id="skill-btn" title="Bảng kỹ năng (K)">🎯</button>
-    <button id="inv-btn" title="Túi đồ (I)">🎒</button>
+    <div id="save-state" title="Tiến trình lưu trên thiết bị này">💾 --:--</div>
+    <div id="hud-btns">
+      <button id="music-btn" title="Bật/tắt nhạc">🔊</button>
+      <button id="sfx-btn" title="Bật/tắt hiệu ứng âm thanh">🔔</button>
+      <button id="skill-btn" title="Bảng kỹ năng (K)">🎯</button>
+      <button id="inv-btn" title="Túi đồ (I)">🎒</button>
+    </div>
   </div>
   <div id="inventory" hidden>
     <div id="inv-head">
@@ -34,11 +38,33 @@
   </div>
   <div id="quest-tracker"></div>
   <div id="toasts"></div>
-  <div id="save-state" title="Tiến trình lưu trên thiết bị này">💾 --:--</div>
   <div id="boss-bar" hidden>
     <div class="boss-name">👑 Slime King</div>
     <div class="boss-track"><div class="boss-fill"></div></div>
   </div>
+  <div id="levelup-banner" hidden>🎉 LÊN CẤP <span id="levelup-num"></span>!</div>
+  <div id="death-screen" hidden>
+    <div class="panel">
+      <div class="death-title">💀 Bạn đã gục ngã</div>
+      <div class="death-sub">Hồi sinh sau <span id="respawn-count">3</span>s...</div>
+      <div class="death-tip">Mẹo: mang theo 🧪 Thuốc hồi máu và đừng đứng trong vòng đỏ!</div>
+    </div>
+  </div>
+  <div id="tutorial" hidden>
+    <div class="panel">
+      <div class="tut-title">📖 Hướng dẫn nhanh</div>
+      <ul class="tut-list">
+        <li>🕹️ <b>Di chuyển</b>: WASD / mũi tên (hoặc joystick trên điện thoại)</li>
+        <li>⚔️ <b>Đánh</b>: Space / nút ⚔️ — dí sát quái để chém</li>
+        <li>🧙 <b>Nhận nhiệm vụ</b>: lại gần Người dẫn đường, nhấn <b>E</b></li>
+        <li>🎯 <b>Kỹ năng</b>: lên cấp nhận điểm, mở khóa bằng phím <b>K</b>, dùng phím 1/2/3</li>
+        <li>🎒 <b>Túi đồ</b>: phím <b>I</b> — mặc kiếm/giáp, uống thuốc khi yếu máu</li>
+        <li>👑 <b>Boss</b>: vòng đỏ là đòn mạnh — chạy ra ngoài!</li>
+      </ul>
+      <button id="tut-close">Bắt đầu chơi!</button>
+    </div>
+  </div>
+  <button id="help-btn" title="Hướng dẫn">❓</button>
   <div id="skill-bar"></div>
   <div id="skill-panel" hidden>
     <div id="skill-panel-head">

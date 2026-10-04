@@ -67,8 +67,12 @@ export class GameScene extends Phaser.Scene {
     this.numKeys = this.input.keyboard.addKeys('ONE,TWO,THREE');
     this.kKey = this.input.keyboard.addKey('K');
     this.iKey = this.input.keyboard.addKey('I');
+    this.f3Key = this.input.keyboard.addKey('F3');
     this.eKey = this.input.keyboard.addKey('E');
     this.prevCast = new Map();
+    // floating damage-number pool (server-authoritative events, capped)
+    this.dmgPool = [];
+    this.dmgIdx = 0;
 
     this.net.on('state', () => this.sync());
     this.lastSent = { x: 9, y: 9 };
@@ -180,12 +184,28 @@ export class GameScene extends Phaser.Scene {
       }
     }
 
+    // floating damage numbers (server results only)
+    for (const d of this.net.dmg || []) {
+      this.spawnDmgNum(d);
+    }
+
     // hero event triggers
     const me = this.net.players.find((p) => p.id === this.net.myId);
     if (me) {
       if (this.prevLevel !== null && me.level > this.prevLevel) {
         sfx.levelup();
         this.fx.sparkle(me.x, me.y);
+        // big level-up banner (server result)
+        const b = document.getElementById('levelup-banner');
+        if (b) {
+          document.getElementById('levelup-num').textContent = me.level;
+          b.style.animation = 'none';
+          void b.offsetWidth; // restart the CSS animation
+          b.style.animation = '';
+          b.hidden = false;
+          clearTimeout(this._bannerT);
+          this._bannerT = setTimeout(() => { b.hidden = true; }, 2200);
+        }
       }
       if (!this.prevDead && me.dead) {
         sfx.death();
@@ -272,6 +292,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   update(time, delta) {
+    if (window.__fpsTick) window.__fpsTick();
     if (this.bg) this.bg.update(delta / 1000);
     // (i) ease every view toward its latest server position
     for (const v of this.views.values()) {
@@ -290,6 +311,9 @@ export class GameScene extends Phaser.Scene {
     }
     if (!typing && Phaser.Input.Keyboard.JustDown(this.iKey) && window.__toggleInventory) {
       window.__toggleInventory();
+    }
+    if (!typing && Phaser.Input.Keyboard.JustDown(this.f3Key) && window.__togglePerf) {
+      window.__togglePerf();
     }
     if (typing || panelOpen) {
       this.sendInput(0, 0); // stop moving while chatting / panel open
@@ -352,5 +376,29 @@ export class GameScene extends Phaser.Scene {
       this.lastSent = { x: ix, y: iy };
       this.lastSendAt = now;
     }
+  }
+
+  /** Floating damage number from a server damage event (pooled, max 24). */
+  spawnDmgNum(d) {
+    const MAX = 24;
+    let t = this.dmgPool[this.dmgIdx % MAX];
+    if (!t) {
+      t = this.add.text(0, 0, '', {
+        fontSize: '15px', fontStyle: 'bold', color: '#ffffff',
+        stroke: '#000000', strokeThickness: 3,
+      }).setOrigin(0.5).setDepth(40);
+      this.dmgPool[this.dmgIdx % MAX] = t;
+    }
+    this.dmgIdx++;
+    this.tweens.killTweensOf(t);
+    t.setText(String(d.amount))
+      .setColor(d.kind === 'hurt' ? '#ff5252' : '#ffe082')
+      .setPosition(d.x + (Math.random() * 16 - 8), d.y)
+      .setAlpha(1).setScale(1).setVisible(true);
+    this.tweens.add({
+      targets: t, y: d.y - 42, alpha: 0, scale: 0.8,
+      duration: 750, ease: 'Cubic.easeOut',
+      onComplete: () => t.setVisible(false),
+    });
   }
 }
