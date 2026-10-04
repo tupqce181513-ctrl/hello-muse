@@ -1,0 +1,1 @@
+{"dependencies":{"express":"^4.21.2","ws":"^8.18.0","zod":"^3.23.8"},"description":"Mini RPG game server — Express + WebSocket + zod, modular & extensible","engines":{"node":">=18"},"main":"src/index.js","name":"mini-rpg-server","scripts":{"start":"node src/index.js"},"version":"2.0.0"}
