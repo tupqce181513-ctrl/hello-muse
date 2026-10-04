@@ -41,6 +41,11 @@ const Npc = z.object({
   npc: z.string().max(24),
 });
 
+const Resume = z.object({
+  t: z.literal('resume'),
+  token: z.string().length(64), // hex token issued at join/resume
+});
+
 const QuestAccept = z.object({
   t: z.literal('quest_accept'),
   quest: z.string().max(32),
@@ -71,4 +76,4 @@ const Chat = z.object({
   text: z.string().trim().min(1).max(120),
 });
 
-module.exports = { Join, Input, Attack, Unlock, Allocate, Cast, Npc, QuestAccept, QuestTurnIn, UseItem, Equip, Unequip, Chat };
+module.exports = { Join, Input, Attack, Unlock, Allocate, Cast, Npc, Resume, QuestAccept, QuestTurnIn, UseItem, Equip, Unequip, Chat };

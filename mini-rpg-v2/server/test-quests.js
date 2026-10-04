@@ -69,9 +69,11 @@ ok(systems.questStatus(world, p, 'gather_shards') === 'available', 'chain unlock
 // --- collect quest + loot drops ---
 ok(systems.acceptQuest(world, p, 'gather_shards') === true, 'accept gather_shards');
 // force drops: kill slimes until 3 shards picked up (drop chance 0.5)
+// (spawn fresh slimes if the unlucky streak outlasts the initial pack)
 let guard = 0;
-while ((p.quests.gather_shards?.state || 'done') !== 'ready' && guard++ < 40) {
-  const sl = world.monsters.find((x) => !x.dead && x.mtype === 'slime') || world.monsters.find((x) => !x.dead);
+while ((p.quests.gather_shards?.state || 'done') !== 'ready' && guard++ < 60) {
+  let sl = world.monsters.find((x) => !x.dead && x.mtype === 'slime');
+  if (!sl) { sl = world.makeMonster('slime'); world.monsters.push(sl); }
   systems.damageSlime(world, sl, p, 9999);
   // teleport drops to the player and run pickup
   for (const it of world.items) { it.x = p.x; it.y = p.y; }

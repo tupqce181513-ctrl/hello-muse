@@ -377,24 +377,32 @@ export function initUI(net) {
     connStatus.dataset.status = s;
     if ((s === 'closed' || s === 'error') && !joined) {
       joinBtn.disabled = false;
-      joinBtn.textContent = 'Thử lại';
-    }
-    if ((s === 'closed' || s === 'error') && joined) {
-      // reconnect keeping the character is phase 4 — for now, back to join
-      joined = false;
-      $('join-title').textContent = 'Mất kết nối — hãy vào lại';
-      overlay.hidden = false;
-      joinBtn.disabled = false;
-      joinBtn.textContent = 'Vào game';
+      // auto-reconnect with backoff keeps the session via the resume token;
+      // the join button stays available as a manual fallback
+      joinBtn.textContent = overlay.hidden ? 'Vào game' : 'Thử lại';
     }
   });
   connStatus.textContent = STATUS_TEXT[net.status] || net.status;
-  net.on('welcome', () => {
+  // no saved token on this device -> show the join form
+  net.on('need_join', () => {
+    joined = false;
+    $('join-title').textContent = '⚔️ Mini RPG';
+    overlay.hidden = false;
+    joinBtn.disabled = false;
+    joinBtn.textContent = 'Vào game';
+  });
+  // stored token was rejected (expired/unknown) -> fresh join
+  net.on('resume_failed', () => {
+    window.__toast('Phiên cũ không còn hiệu lực — hãy tạo nhân vật mới');
+    net.emit('need_join');
+  });
+  net.on('welcome', (m) => {
     joined = true;
     overlay.hidden = true;
     joinBtn.disabled = false;
     joinBtn.textContent = 'Vào game';
     $('join-title').textContent = 'Mini RPG';
+    if (m.resumed) window.__toast(`💾 Đã nối lại phiên của ${m.name || 'bạn'}!`);
   });
 
   musicBtn.addEventListener('click', () => {
@@ -417,6 +425,12 @@ export function initUI(net) {
     hudOnline.textContent = `🟢 ${net.players.length} online`;
     const goldEl = $('gold');
     if (goldEl && me) goldEl.textContent = `🪙 ${me.gold || 0}`;
+    const saveEl = $('save-state');
+    if (saveEl) {
+      saveEl.textContent = me && me.savedAt
+        ? '💾 ' + new Date(me.savedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        : '💾 --:--';
+    }
     updateSkillBar();
     renderQuestTracker();
     // re-render the open panel only when skill state actually changed

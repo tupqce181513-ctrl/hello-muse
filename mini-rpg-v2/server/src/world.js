@@ -8,6 +8,7 @@ const fs = require('fs');
 const path = require('path');
 const { EventEmitter } = require('events');
 const { Player, Slime, Monster } = require('./entities');
+const { newId } = require('./persistence/store');
 
 const rand = (a, b) => a + Math.random() * (b - a);
 
@@ -107,10 +108,80 @@ class World {
 
   addPlayer(name, skinId) {
     const s = this.randomSpawn();
-    const p = new Player(name, skinId, s.x, s.y, this.cfg);
+    const p = new Player(name, skinId, s.x, s.y, this.cfg, newId());
     this.players.set(p.id, p);
     this.bus.emit('player:join', p);
     return p;
+  }
+
+  /**
+   * Rebuild a player from a saved record (after restart / resume).
+   * Derived stats are recomputed from base data (armor bonus stays dynamic);
+   * cooldowns resume from absolute expiry timestamps so a reconnect never
+   * resets them. Position is intentionally fresh (safe spawn).
+   */
+  restorePlayer(rec) {
+    const s = this.randomSpawn();
+    const p = new Player(rec.name, rec.skinId, s.x, s.y, this.cfg, rec.id);
+    const now = Date.now();
+    p.level = rec.level || 1;
+    p.xp = rec.xp || 0;
+    p.sp = rec.sp || 0;
+    p.skills = Array.isArray(rec.skills) ? rec.skills : [];
+    p.passives = { power: 0, swift: 0, tough: 0, crit: 0, ...(rec.passives || {}) };
+    p.gold = rec.gold || 0;
+    p.maxHp = rec.maxHp || this.cfg.player.maxHp;
+    p.hp = Math.min(rec.hp != null ? rec.hp : p.maxHp, p.maxHp);
+    p.inv = Array.isArray(rec.inv) && rec.inv.length === 12 ? rec.inv : new Array(12).fill(null);
+    p.equip = rec.equip && typeof rec.equip === 'object'
+      ? { weapon: rec.equip.weapon || null, armor: rec.equip.armor || null }
+      : { weapon: null, armor: null };
+    p.quests = rec.quests && typeof rec.quests === 'object' ? rec.quests : {};
+    p.questsDone = Array.isArray(rec.questsDone) ? rec.questsDone : [];
+    // cooldowns: absolute expiry -> remaining seconds (expired ones are dropped)
+    p.cds = {};
+    for (const [k, exp] of Object.entries(rec.cdsExpiresAt || {})) {
+      if (exp > now) p.cds[k] = (exp - now) / 1000;
+    }
+    p.potionCd = Math.max(0, ((rec.potionCdExpiresAt || 0) - now) / 1000);
+    p.savedAt = rec.savedAt || 0;
+    // never reuse an item uid
+    for (const slot of p.inv) {
+      const m = slot && /^i(\d+)$/.exec(slot.uid || '');
+      if (m) this.nextItemId = Math.max(this.nextItemId, Number(m[1]) + 1);
+    }
+    this.players.set(p.id, p);
+    this.bus.emit('player:join', p);
+    return p;
+  }
+
+  /** Snapshot a player into a persistable record. */
+  toRecord(p) {
+    const now = Date.now();
+    const cdsExpiresAt = {};
+    for (const [k, v] of Object.entries(p.cds)) {
+      if (v > 0) cdsExpiresAt[k] = now + v * 1000;
+    }
+    return {
+      schemaVersion: 1,
+      id: p.id,
+      name: p.name, skinId: p.skinId,
+      level: p.level, xp: p.xp, sp: p.sp,
+      skills: [...p.skills], passives: { ...p.passives },
+      gold: p.gold,
+      maxHp: p.maxHp, hp: Math.ceil(p.hp),
+      inv: p.inv.map((s) => (s ? { uid: s.uid, item: s.item, qty: s.qty } : null)),
+      equip: {
+        weapon: p.equip.weapon ? { ...p.equip.weapon } : null,
+        armor: p.equip.armor ? { ...p.equip.armor } : null,
+      },
+      quests: JSON.parse(JSON.stringify(p.quests)),
+      questsDone: [...p.questsDone],
+      cdsExpiresAt,
+      potionCdExpiresAt: now + Math.max(0, p.potionCd || 0) * 1000,
+      savedAt: now,
+      lastSeen: now,
+    };
   }
 
   removePlayer(id) {
