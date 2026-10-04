@@ -230,7 +230,9 @@ function respawn(world) {
     if (p.dead && now >= p.respawnAt) {
       p.dead = false;
       p.hp = p.maxHp;
-      p.x = rand(200, 400); p.y = rand(200, 400);
+      const s = world.randomSpawn(); // same clearance rules as initial spawn
+      p.x = s.x; p.y = s.y;
+      p.vx = 0; p.vy = 0;
       world.bus.emit('player:respawn', p);
     }
   }

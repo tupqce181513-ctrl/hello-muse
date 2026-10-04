@@ -6,6 +6,8 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #1a2b1e;
 
 #hud { position: fixed; top: 12px; left: 12px; z-index: 5; color: #fff;
   text-shadow: 0 1px 3px rgba(0,0,0,.7); font-size: 14px; pointer-events: none; }
+/* (d) HUD is click-through, but its buttons must stay clickable */
+#hud button { pointer-events: auto; }
 .bar-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
 #level { font-weight: 700; min-width: 44px; }
 .xp-label { min-width: 44px; font-weight: 700; color: #ffe082; }
@@ -16,7 +18,14 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #1a2b1e;
 .bar.xp > div { background: linear-gradient(90deg, #fdd835, #ffeb3b); width: 0; }
 #hp-text { position: absolute; inset: 0; display: flex; align-items: center;
   justify-content: center; font-size: 12px; font-weight: 600; }
+/* (d) guarantee [hidden] always hides, no matter what other rules set */
+[hidden] { display: none !important; }
+
 #online { margin-top: 4px; font-size: 13px; opacity: .9; }
+#conn-status { margin-top: 4px; font-size: 13px; font-weight: bold; }
+#conn-status[data-status="open"] { color: #69f0ae; }
+#conn-status[data-status="connecting"] { color: #ffd54f; }
+#conn-status[data-status="closed"], #conn-status[data-status="error"] { color: #ff8a80; }
 #music-btn { margin-top: 6px; font-size: 18px; background: rgba(0,0,0,.55);
   border: 1px solid rgba(255,255,255,.25); border-radius: 8px; padding: 4px 10px;
   cursor: pointer; }
@@ -90,6 +99,7 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #1a2b1e;
   font-weight: 700; border: none; border-radius: 8px; cursor: pointer;
   background: #66bb6a; color: #10240f; }
 #join-btn:hover { background: #81c784; }
+#join-btn:disabled { background: #555; color: #ccc; cursor: wait; }
 .hint { font-size: 12px; margin-top: 14px !important; opacity: .6 !important; }
 
 #touch-ui[hidden] { display: none; }

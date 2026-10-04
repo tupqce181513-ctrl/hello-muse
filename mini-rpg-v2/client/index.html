@@ -17,6 +17,7 @@
       <div class="bar xp"><div id="xp-fill"></div></div>
     </div>
     <div id="online">🟢 0 online</div>
+    <div id="conn-status" data-status="idle">⚪ Chưa kết nối</div>
     <button id="music-btn" title="Bật/tắt nhạc">🔊</button>
     <button id="skill-btn" title="Bảng kỹ năng (K)">🎯</button>
   </div>
@@ -41,12 +42,12 @@
 
   <div id="join-overlay">
     <div class="panel">
-      <h1>⚔️ Mini RPG</h1>
+      <h1 id="join-title">⚔️ Mini RPG</h1>
       <p>Phiêu lưu cùng bạn bè, đánh slime, lên cấp!</p>
       <input id="name-input" placeholder="Tên nhân vật..." maxlength="16" autocomplete="off" />
       <div id="skin-picker"></div>
       <button id="join-btn">Vào game</button>
-      <p class="hint">WASD / mũi tên: di chuyển · Space: đánh · Enter: chat</p>
+      <p class="hint">WASD / mũi tên: di chuyển · Space: đánh · 1/2/3: skill · K: bảng kỹ năng · Enter: chat</p>
     </div>
   </div>
 

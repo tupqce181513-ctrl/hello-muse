@@ -61,6 +61,9 @@ cd server && npm install && npm start
 # Mở http://localhost:8080
 ```
 
+Dev client riêng (Vite): `cd client && npm run dev` — proxy `/api` về server game
+(`VITE_WS_URL=ws://localhost:8080` cho WebSocket, xem `client/src/api.js`).
+
 Dev client riêng (hot reload): `cd client && npm run dev`, rồi tạo file
 `client/.env` với nội dung `VITE_WS_URL=ws://localhost:8080`.
 

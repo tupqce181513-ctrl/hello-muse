@@ -43,6 +43,13 @@ export class GameScene extends Phaser.Scene {
     this.net.on('state', () => this.sync());
     this.lastSent = { x: 9, y: 9 };
     this.lastSendAt = 0;
+
+    // (f) never leave the hero running when the page loses focus
+    this._zeroInput = () => this.sendInput(0, 0);
+    window.addEventListener('blur', this._zeroInput);
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) this._zeroInput();
+    });
   }
 
   buildWorld() {
@@ -138,10 +145,21 @@ export class GameScene extends Phaser.Scene {
 
   update(time, delta) {
     if (this.bg) this.bg.update(delta / 1000);
+    // (i) ease every view toward its latest server position
+    for (const v of this.views.values()) {
+      if (v.frame) v.frame(delta / 1000);
+    }
     if (!this.net || this.net.myId == null) return;
 
-    if (window.__isTyping && window.__isTyping()) {
-      this.sendInput(0, 0); // stop moving while chatting
+    const typing = window.__isTyping && window.__isTyping(); // text field focused
+    const panelOpen = window.__panelOpen && window.__panelOpen();
+    // (c) K toggles the skill panel even while it is open — handle before
+    // the input-blocking branch below (but not while typing in a text field)
+    if (!typing && Phaser.Input.Keyboard.JustDown(this.kKey) && window.__toggleSkills) {
+      window.__toggleSkills();
+    }
+    if (typing || panelOpen) {
+      this.sendInput(0, 0); // stop moving while chatting / panel open
       return;
     }
 
@@ -168,9 +186,6 @@ export class GameScene extends Phaser.Scene {
         window.__tryCast(SKILL_IDS[i]);
       }
     });
-    if (Phaser.Input.Keyboard.JustDown(this.kKey) && window.__toggleSkills) {
-      window.__toggleSkills();
-    }
     if (Phaser.Input.Keyboard.JustDown(this.enterKey)) {
       window.__focusChat();
     }

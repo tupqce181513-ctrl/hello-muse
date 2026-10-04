@@ -51,7 +51,38 @@ app.get('/api/skills', (req, res) => {
 
 /* --- WebSocket: validated message routing --- */
 const server = http.createServer(app);
-const wss = new WebSocket.Server({ server });
+const wss = new WebSocket.Server({ server, maxPayload: 16 * 1024 });
+
+/* Per-connection rate limits: { type: { n, per } } — sliding window. */
+const RATE_LIMITS = {
+  join:     { n: 3,  per: 10000 },
+  input:    { n: 40, per: 1000 },
+  attack:   { n: 6,  per: 1000 },
+  cast:     { n: 6,  per: 1000 },
+  chat:     { n: 3,  per: 1000 },
+  unlock:   { n: 5,  per: 1000 },
+  allocate: { n: 5,  per: 1000 },
+};
+function checkRate(ctx, type) {
+  const lim = RATE_LIMITS[type];
+  if (!lim) return true;
+  const now = Date.now();
+  ctx._rl = ctx._rl || {};
+  let arr = (ctx._rl[type] || []).filter((t) => now - t < lim.per);
+  if (arr.length >= lim.n) { ctx._rl[type] = arr; return false; }
+  arr.push(now);
+  ctx._rl[type] = arr;
+  return true;
+}
+
+/* Heartbeat: drop connections that stopped responding. */
+setInterval(() => {
+  for (const ws of wss.clients) {
+    if (ws.isAlive === false) { ws.terminate(); continue; }
+    ws.isAlive = false;
+    ws.ping();
+  }
+}, 30000);
 
 function broadcast(msg) {
   const s = JSON.stringify(msg);
@@ -63,7 +94,7 @@ function broadcast(msg) {
 const router = new Router();
 
 router.on('join', schemas.Join, (ctx, m) => {
-  if (ctx.player) return;
+  if (!checkRate(ctx, 'join') || ctx.player) return;
   const validSkins = new Set(config.skins.map((s) => s.id));
   const skinId = validSkins.has(m.skin) ? m.skin : config.skins[0].id;
   ctx.player = ctx.world.addPlayer(m.name, skinId);
@@ -76,36 +107,48 @@ router.on('join', schemas.Join, (ctx, m) => {
 });
 
 router.on('input', schemas.Input, (ctx, m) => {
+  if (!checkRate(ctx, 'input')) return;
   const p = ctx.player;
   if (!p || p.dead) return;
-  const l = Math.hypot(m.x, m.y) || 1;
-  p.vx = m.x / l;
-  p.vy = m.y / l;
-  if (m.x || m.y) { p.fx = m.x / l; p.fy = m.y / l; }
+  // Preserve analog magnitude: 0.25 walks slower than 1. Cap at 1 so
+  // diagonals are never faster than cardinal directions. Update facing
+  // only on deliberate input (deadzone), never from drift.
+  const l = Math.hypot(m.x, m.y);
+  if (l > 1) { p.vx = m.x / l; p.vy = m.y / l; }
+  else if (l < 0.05) { p.vx = 0; p.vy = 0; }
+  else { p.vx = m.x; p.vy = m.y; }
+  if (l > 0.15) { p.fx = m.x / l; p.fy = m.y / l; }
 });
 
 router.on('attack', schemas.Attack, (ctx) => {
+  if (!checkRate(ctx, 'attack')) return;
   if (ctx.player) systems.attack(ctx.world, ctx.player);
 });
 
 router.on('unlock', schemas.Unlock, (ctx, m) => {
+  if (!checkRate(ctx, 'unlock')) return;
   if (ctx.player) systems.unlockSkill(ctx.world, ctx.player, m.skill);
 });
 
 router.on('allocate', schemas.Allocate, (ctx, m) => {
+  if (!checkRate(ctx, 'allocate')) return;
   if (ctx.player) systems.allocatePassive(ctx.world, ctx.player, m.passive);
 });
 
 router.on('cast', schemas.Cast, (ctx, m) => {
+  if (!checkRate(ctx, 'cast')) return;
   if (ctx.player) systems.castSkill(ctx.world, ctx.player, m.skill);
 });
 
 router.on('chat', schemas.Chat, (ctx, m) => {
+  if (!checkRate(ctx, 'chat')) return;
   if (ctx.player && !ctx.player.dead) ctx.world.addChat(ctx.player.name, m.text);
 });
 
 wss.on('connection', (ws) => {
   const ctx = { ws, world, player: null };
+  ws.isAlive = true;
+  ws.on('pong', () => { ws.isAlive = true; });
   ws.on('message', (raw) => router.handle(ctx, raw));
   ws.on('close', () => {
     if (ctx.player) world.removePlayer(ctx.player.id);

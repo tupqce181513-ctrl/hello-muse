@@ -42,6 +42,10 @@ export class PlayerView extends Phaser.GameObjects.Container {
     this.arc = scene.add.graphics();
     this.add([this.nose, this.eye1, this.eye2, this.nameText, this.hpBar, this.arc]);
     this.setDepth(10);
+    // interpolation targets (i): we lerp toward the server position each frame
+    this.tx = p.x; this.ty = p.y;
+    this.snapped = true;
+    this.wasDead = !!p.dead;
     this.update(p);
   }
 
@@ -57,7 +61,17 @@ export class PlayerView extends Phaser.GameObjects.Container {
   }
 
   update(p) {
-    this.setPosition(p.x, p.y);
+    // Snap (no interpolation) on spawn, respawn, or teleport-like jumps —
+    // otherwise the hero would be dragged across the map.
+    const moved = Math.hypot(p.x - this.tx, p.y - this.ty);
+    if (this.snapped || moved > 240 || (this.wasDead && !p.dead)) {
+      this.setPosition(p.x, p.y);
+      this.tx = p.x; this.ty = p.y;
+      this.snapped = false;
+    } else {
+      this.tx = p.x; this.ty = p.y;
+    }
+    this.wasDead = !!p.dead;
     this.setAlpha(p.dead ? 0.35 : 1);
 
     const ex = -p.fy, ey = p.fx;
@@ -82,5 +96,12 @@ export class PlayerView extends Phaser.GameObjects.Container {
       this.arc.arc(0, 0, 32, ang - 1, ang + 1);
       this.arc.strokePath();
     }
+  }
+
+  /** Called every frame: ease the rendered position toward the server target. */
+  frame(dt) {
+    const k = Math.min(1, dt * 12);
+    this.x += (this.tx - this.x) * k;
+    this.y += (this.ty - this.y) * k;
   }
 }
