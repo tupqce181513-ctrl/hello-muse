@@ -39,20 +39,40 @@ class World {
     return !!(tile && tile.solid);
   }
 
-  randomSpawn() {
-    const pts = this.map.spawnPoints;
-    const p = pts[Math.floor(Math.random() * pts.length)];
-    return { x: p.x + rand(-30, 30), y: p.y + rand(-30, 30) };
+  /** Is the whole circle (x, y, radius) free of solid tiles? */
+  isAreaClear(x, y, radius) {
+    const ts = this.ts;
+    const x0 = Math.floor((x - radius) / ts), x1 = Math.floor((x + radius) / ts);
+    const y0 = Math.floor((y - radius) / ts), y1 = Math.floor((y + radius) / ts);
+    for (let ty = y0; ty <= y1; ty++) {
+      for (let tx = x0; tx <= x1; tx++) {
+        if (this.isSolidTile(tx, ty)) return false;
+      }
+    }
+    return true;
   }
 
-  randomPoint(margin = 120) {
-    // random walkable point (used for slimes)
+  randomSpawn() {
+    const pts = this.map.spawnPoints;
+    for (let i = 0; i < 20; i++) {
+      const p = pts[Math.floor(Math.random() * pts.length)];
+      const x = p.x + rand(-30, 30), y = p.y + rand(-30, 30);
+      if (this.isAreaClear(x, y, 16)) return { x, y };
+    }
+    // fallback: scan for any clear spot
+    for (let i = 0; i < 100; i++) {
+      const x = rand(60, this.worldW - 60), y = rand(60, this.worldH - 60);
+      if (this.isAreaClear(x, y, 16)) return { x, y };
+    }
+    return { x: this.worldW / 2, y: this.worldH / 2 };
+  }
+
+  randomPoint(margin = 120, radius = 14) {
+    // random walkable point with full-radius clearance (used for slimes)
     for (let i = 0; i < 50; i++) {
       const x = rand(margin, this.worldW - margin);
       const y = rand(margin, this.worldH - margin);
-      if (!this.isSolidTile(Math.floor(x / this.ts), Math.floor(y / this.ts))) {
-        return { x, y };
-      }
+      if (this.isAreaClear(x, y, radius)) return { x, y };
     }
     return { x: this.worldW / 2, y: this.worldH / 2 };
   }
@@ -88,7 +108,10 @@ class World {
 
   snapshot() {
     return {
-      players: [...this.players.values()].map((p) => p.serialize()),
+      players: [...this.players.values()].map((p) => ({
+        ...p.serialize(),
+        xpNeed: this.cfg.xpNeed(p.level), // always in sync with the server curve
+      })),
       slimes: this.slimes.map((s) => s.serialize()),
     };
   }

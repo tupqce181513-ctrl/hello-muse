@@ -1,16 +1,15 @@
 import Phaser from 'phaser';
+import { WS_URL } from './api.js';
 
 /**
  * NetworkManager — wraps the WebSocket and re-emits typed events:
  *   'welcome' ({ id, map, chat }), 'state' ({ players, slimes }), 'chat' ({ name, text })
+ *   'status'  ('connecting' | 'open' | 'closed' | 'error')
  *
  * Dev note: when running the Vite dev server, point it at the game server with
  *   echo 'VITE_WS_URL=ws://localhost:8080' > .env
+ * (API calls then go through the /api proxy in vite.config.js.)
  */
-const WS_URL =
-  import.meta.env.VITE_WS_URL ||
-  (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host;
-
 export class Net extends Phaser.Events.EventEmitter {
   constructor() {
     super();
@@ -19,11 +18,33 @@ export class Net extends Phaser.Events.EventEmitter {
     this.players = [];
     this.slimes = [];
     this.map = null; // tile map from 'welcome'
+    this.status = 'idle';
+  }
+
+  setStatus(s) {
+    if (this.status === s) return;
+    this.status = s;
+    this.emit('status', s);
   }
 
   connect() {
-    this.ws = new WebSocket(WS_URL);
-    this.ws.onmessage = (ev) => {
+    if (this.ws && (this.ws.readyState === 0 || this.ws.readyState === 1)) return;
+    this.setStatus('connecting');
+    let ws;
+    try {
+      ws = new WebSocket(WS_URL);
+    } catch {
+      this.setStatus('error');
+      return;
+    }
+    this.ws = ws;
+    ws.onopen = () => this.setStatus('open');
+    ws.onerror = () => this.setStatus('error');
+    ws.onclose = () => {
+      this.setStatus('closed');
+      this.emit('chat', { name: 'Server', text: 'Mất kết nối tới server...' });
+    };
+    ws.onmessage = (ev) => {
       let m;
       try { m = JSON.parse(ev.data); } catch { return; }
       if (m.t === 'welcome') {
@@ -38,8 +59,6 @@ export class Net extends Phaser.Events.EventEmitter {
         this.emit('chat', m);
       }
     };
-    this.ws.onclose = () =>
-      this.emit('chat', { name: 'Server', text: 'Mất kết nối tới server...' });
   }
 
   send(msg) {

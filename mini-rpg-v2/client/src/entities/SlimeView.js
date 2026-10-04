@@ -13,10 +13,19 @@ export class SlimeView extends Phaser.GameObjects.Container {
     this.hpBar = scene.add.graphics();
     this.add([this.body, this.e1, this.e2, this.hpBar]);
     this.setDepth(5);
+    this.tx = s.x; this.ty = s.y;
+    this.snapped = true;
   }
 
   update(s, time) {
-    this.setPosition(s.x, s.y);
+    const moved = Math.hypot(s.x - this.tx, s.y - this.ty);
+    if (this.snapped || moved > 240) {
+      this.setPosition(s.x, s.y);
+      this.tx = s.x; this.ty = s.y;
+      this.snapped = false;
+    } else {
+      this.tx = s.x; this.ty = s.y;
+    }
     const bounce = Math.sin(time / 300 + this.sid) * 2;
     this.body.setPosition(0, bounce);
     this.e1.setPosition(-5, -2 + bounce);
@@ -31,5 +40,12 @@ export class SlimeView extends Phaser.GameObjects.Container {
       this.hpBar.fillStyle(0x4caf50, 1);
       this.hpBar.fillRect(-16, -25, 32 * f, 4);
     }
+  }
+
+  /** Called every frame: ease the rendered position toward the server target. */
+  frame(dt) {
+    const k = Math.min(1, dt * 12);
+    this.x += (this.tx - this.x) * k;
+    this.y += (this.ty - this.y) * k;
   }
 }

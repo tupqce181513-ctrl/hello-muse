@@ -4,6 +4,7 @@
  * Kept outside Phaser so UI stays simple HTML/CSS.
  */
 import { music, sfx } from './audio.js';
+import { apiUrl } from './api.js';
 
 export function initUI(net) {
   const $ = (id) => document.getElementById(id);
@@ -19,9 +20,11 @@ export function initUI(net) {
   const skillBtn = $('skill-btn');
 
   window.__joy = { active: false, dx: 0, dy: 0 };
+  // (c) typing = a text field has focus. The skill panel being open is tracked
+  // separately so K can still toggle it (GameScene checks __panelOpen itself).
   window.__isTyping = () =>
-    document.activeElement === chatInput || document.activeElement === nameInput ||
-    !skillPanel.hidden;
+    document.activeElement === chatInput || document.activeElement === nameInput;
+  window.__panelOpen = () => !skillPanel.hidden;
   window.__focusChat = () => chatInput.focus();
   window.__skins = {};
   window.__skillDefs = null;
@@ -30,7 +33,7 @@ export function initUI(net) {
   let selectedSkin = null;
 
   /* Skin picker (loaded from the server so both sides share one list) */
-  fetch('api/skins')
+  fetch(apiUrl('api/skins'))
     .then((r) => r.json())
     .then((skins) => {
       for (const s of skins) {
@@ -54,7 +57,7 @@ export function initUI(net) {
   const ACTIVE_ORDER = ['dash', 'whirlwind', 'heal'];
   const slotEls = {};
 
-  fetch('api/skills')
+  fetch(apiUrl('api/skills'))
     .then((r) => r.json())
     .then((defs) => {
       window.__skillDefs = defs;
@@ -184,13 +187,55 @@ export function initUI(net) {
   });
 
   joinBtn.addEventListener('click', () => {
+    // (b) only send join when the socket is open; the overlay closes on 'welcome'
+    if (net.status !== 'open') {
+      net.connect(); // retry
+      joinBtn.textContent = 'Đang kết nối...';
+      return;
+    }
     const name = (nameInput.value.trim() || 'Hero').slice(0, 16);
+    joinBtn.disabled = true;
+    joinBtn.textContent = 'Đang vào game...';
     net.join(name, selectedSkin);
     music.start(); // user gesture: allowed to start audio
     sfx.join();
-    overlay.hidden = true;
   });
   nameInput.focus();
+
+  /* (b) connection status pill + join lifecycle */
+  const connStatus = $('conn-status');
+  let joined = false;
+  const STATUS_TEXT = {
+    idle: '⚪ Chưa kết nối',
+    connecting: '🟡 Đang kết nối...',
+    open: '🟢 Đã kết nối',
+    closed: '🔴 Mất kết nối',
+    error: '🔴 Lỗi kết nối',
+  };
+  net.on('status', (s) => {
+    connStatus.textContent = STATUS_TEXT[s] || s;
+    connStatus.dataset.status = s;
+    if ((s === 'closed' || s === 'error') && !joined) {
+      joinBtn.disabled = false;
+      joinBtn.textContent = 'Thử lại';
+    }
+    if ((s === 'closed' || s === 'error') && joined) {
+      // reconnect keeping the character is phase 4 — for now, back to join
+      joined = false;
+      $('join-title').textContent = 'Mất kết nối — hãy vào lại';
+      overlay.hidden = false;
+      joinBtn.disabled = false;
+      joinBtn.textContent = 'Vào game';
+    }
+  });
+  connStatus.textContent = STATUS_TEXT[net.status] || net.status;
+  net.on('welcome', () => {
+    joined = true;
+    overlay.hidden = true;
+    joinBtn.disabled = false;
+    joinBtn.textContent = 'Vào game';
+    $('join-title').textContent = 'Mini RPG';
+  });
 
   musicBtn.addEventListener('click', () => {
     const on = music.toggle();
@@ -201,8 +246,9 @@ export function initUI(net) {
   function updateHUD() {
     const me = net.me();
     if (me) {
+      // (h) xpNeed comes from the server snapshot — always matches the curve
       const defs = window.__skillDefs;
-      const need = (defs && defs.xpTable && defs.xpTable[me.level]) || me.level * 100;
+      const need = me.xpNeed || (defs && defs.xpTable && defs.xpTable[me.level]) || me.level * 100;
       hudHp.style.width = (100 * me.hp / me.maxHp) + '%';
       hudHpText.textContent = `${Math.ceil(me.hp)} / ${me.maxHp}`;
       hudXp.style.width = (100 * me.xp / need) + '%';
@@ -248,15 +294,18 @@ export function initUI(net) {
         }
       }
     }, { passive: true });
-    window.addEventListener('touchend', (e) => {
+    const endTouch = (e) => {
       for (const t of e.changedTouches) {
         if (t.identifier === joyId) {
           joyId = null;
           joy.active = false; joy.dx = 0; joy.dy = 0;
           stickEl.style.left = '35px'; stickEl.style.top = '35px';
+          net.send({ t: 'input', x: 0, y: 0 }); // (f) stop immediately
         }
       }
-    });
+    };
+    window.addEventListener('touchend', endTouch);
+    window.addEventListener('touchcancel', endTouch); // (f)
     atkBtn.addEventListener('touchstart', (e) => {
       net.send({ t: 'attack' });
       e.preventDefault();
