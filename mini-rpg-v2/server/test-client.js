@@ -26,10 +26,10 @@ ws.on('message', (data) => {
   if (m.t === 'state' && !gotState && joined) {
     gotState = true;
     const me = m.players.find((p) => p.name === 'Tester');
-    console.log(`state: players=${m.players.length} slimes=${m.slimes.length} skin=${me && me.skin} x=${me && me.x}`);
+    console.log(`state: players=${m.players.length} slimes=${m.monsters.length} skin=${me && me.skin} x=${me && me.x}`);
     if (!me) fail('player missing from state');
     if (me.skin !== 'azure') fail('skin not applied, got: ' + me.skin);
-    if (m.slimes.length === 0) fail('no slimes in state');
+    if (m.monsters.length === 0) fail('no slimes in state');
     console.log('TEST PASS');
     setTimeout(() => process.exit(0), 300);
   }

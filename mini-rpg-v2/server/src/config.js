@@ -19,18 +19,48 @@ module.exports = {
     attackCd: 0.45,   // seconds between swings
     baseDmg: 20,
     dmgPerLevel: 8,
-    xpPerKill: 25,
+    potionCd: 5,      // seconds between potion uses
+    potionHeal: 0.5,  // fraction of max HP restored
+    invSize: 12,
   },
 
-  slime: {
-    count: 8,
-    hp: 60,
-    speed: 110,       // chase speed
-    wanderSpeed: 45,
-    aggroRange: 280,
-    touchRange: 34,
-    touchDmg: 8,
-    respawnMs: 5000,
+  // Monster types. `zone` refers to spawnZones below.
+  monsters: {
+    slime: {
+      count: 8, hp: 60, radius: 14,
+      speed: 110, wanderSpeed: 45, aggroRange: 280,
+      touchRange: 34, touchDmg: 8, respawnMs: 5000, xp: 25,
+      zone: 'meadow',
+    },
+    goblin: {
+      count: 4, hp: 120, radius: 15,
+      speed: 150, wanderSpeed: 50, aggroRange: 340,
+      touchRange: 36, touchDmg: 12, respawnMs: 8000, xp: 45,
+      zone: 'east',
+      heavy: { range: 100, dmg: 30, teleMs: 800, cdMs: 5000 }, // telegraphed lunge
+    },
+    wisp: {
+      count: 3, hp: 80, radius: 13,
+      speed: 90, wanderSpeed: 40, aggroRange: 420, keepRange: 260,
+      touchRange: 30, touchDmg: 6, respawnMs: 10000, xp: 50,
+      zone: 'north',
+      ranged: { range: 380, dmg: 14, cdMs: 2500, projSpeed: 320 },
+    },
+    slime_king: {
+      count: 1, hp: 1500, radius: 40, boss: true,
+      speed: 70, wanderSpeed: 0, aggroRange: 500,
+      touchRange: 62, touchDmg: 25, respawnMs: 120000, xp: 400,
+      zone: 'arena',
+      slam: { range: 150, dmg: 40, teleMs: 1200, cdMs: 8000 },  // telegraphed AoE
+      summon: { cdMs: 15000, count: 2, maxAlive: 10 },          // calls small slimes
+    },
+  },
+
+  spawnZones: {
+    meadow: { x0: 100, y0: 600, x1: 1500, y1: 1100 }, // slimes (south)
+    east:   { x0: 1050, y0: 100, x1: 1550, y1: 560 }, // goblins
+    north:  { x0: 100, y0: 100, x1: 1000, y1: 450 },  // wisps
+    arena:  { x0: 1120, y0: 400, x1: 1440, y1: 620 }, // slime king
   },
 
   // Pickable character skins (id must be unique; shown in the join overlay)
@@ -69,13 +99,28 @@ module.exports = {
       greeting: 'Chào mừng đến Đồng Cỏ! Slime đang phá hoại mùa màng — cậu giúp ta chứ?' },
   ],
 
-  // --- Items (minimal: counts only; phase 3 expands to a full inventory) ---
+  // --- Items (phase 3: full inventory, 12 slots) ---
   items: {
-    slime_shard: { name: 'Mảnh Slime', color: '#69f0ae' },
+    slime_shard:  { name: 'Mảnh Slime',    icon: '🟢', color: '#69f0ae', stack: true },
+    gold:         { name: 'Vàng',           icon: '🪙', color: '#ffd54f', stack: true },
+    potion:       { name: 'Thuốc hồi máu',  icon: '🧪', color: '#ef5350', stack: true,
+                    usable: true, desc: 'Hồi 50% HP (hồi chiêu 5s)' },
+    sword_iron:   { name: 'Kiếm sắt',       icon: '🗡️', color: '#90a4ae',
+                    equip: 'weapon', bonus: { dmg: 12 }, desc: '+12 sát thương' },
+    armor_leather:{ name: 'Giáp da',        icon: '🦺', color: '#8d6e3f',
+                    equip: 'armor', bonus: { maxHp: 30 }, desc: '+30 HP tối đa' },
+    kings_blade:  { name: 'Kiếm Vương',     icon: '👑', color: '#ffd54f',
+                    equip: 'weapon', bonus: { dmg: 30 }, desc: '+30 sát thương' },
   },
-  // loot table per monster kind: [{ item, chance }]
+  // loot table per monster kind: [{ item, chance, amount }]
   drops: {
-    slime: [{ item: 'slime_shard', chance: 0.5 }],
+    slime:     [{ item: 'slime_shard', chance: 0.5 }, { item: 'gold', chance: 0.3, amount: [5, 15] },
+                { item: 'potion', chance: 0.08 }],
+    goblin:    [{ item: 'gold', chance: 0.6, amount: [10, 25] }, { item: 'potion', chance: 0.15 },
+                { item: 'sword_iron', chance: 0.04 }],
+    wisp:      [{ item: 'gold', chance: 0.5, amount: [8, 20] }, { item: 'potion', chance: 0.12 },
+                { item: 'armor_leather', chance: 0.04 }],
+    slime_king:[ { item: 'gold', chance: 1, amount: [100, 200] }, { item: 'potion', chance: 1, amount: [2, 3] }],
   },
   itemDespawnMs: 60000,
 
@@ -107,11 +152,11 @@ module.exports = {
       id: 'boss_hunt',
       name: 'Thách đấu Boss',
       giver: 'guide',
-      desc: 'Hạ Boss đồng cỏ.',
-      objectives: [{ type: 'kill', target: 'boss', count: 1, text: 'Hạ Boss' }],
+      desc: 'Hạ Slime King ở đấu trường phía đông bắc. Quy tắc co-op: gây ít nhất 5% sát thương và còn online khi Boss gục để nhận thưởng.',
+      objectives: [{ type: 'kill', target: 'slime_king', count: 1, text: 'Hạ Slime King' }],
       rewards: { xp: 300, gold: 150 },
       requires: 'gather_shards',
-      locked: true, // phase 3: no boss exists yet — never offered
+      finalReward: true, // + Kiếm Vương khi trả quest
     },
   ],
 };

@@ -7,7 +7,7 @@
 const fs = require('fs');
 const path = require('path');
 const { EventEmitter } = require('events');
-const { Player, Slime } = require('./entities');
+const { Player, Slime, Monster } = require('./entities');
 
 const rand = (a, b) => a + Math.random() * (b - a);
 
@@ -16,8 +16,10 @@ class World {
     this.cfg = config;
     this.bus = new EventEmitter();
     this.players = new Map(); // id -> Player
-    this.slimes = [];
-    this.items = []; // ground loot: { id, item, x, y, expiresAt }
+    this.monsters = [];
+    this.projectiles = []; // { id, x, y, dx, dy, speed, dmg, life }
+    this.nextProjId = 1;
+    this.items = []; // ground loot: { id, item, x, y, amount?, expiresAt }
     this.nextItemId = 1;
     this.chatLog = [];
 
@@ -28,8 +30,10 @@ class World {
     this.worldW = this.map.rows[0].length * this.ts;
     this.worldH = this.map.rows.length * this.ts;
 
-    for (let i = 0; i < config.slime.count; i++) {
-      this.slimes.push(this.makeSlime());
+    for (const [kind, c] of Object.entries(config.monsters)) {
+      for (let i = 0; i < c.count; i++) {
+        this.monsters.push(this.makeMonster(kind));
+      }
     }
   }
 
@@ -79,6 +83,23 @@ class World {
     return { x: this.worldW / 2, y: this.worldH / 2 };
   }
 
+  /** Random clear point inside a named spawn zone. */
+  spawnInZone(zoneName, radius) {
+    const z = this.cfg.spawnZones[zoneName];
+    if (!z) return this.randomPoint(120, radius);
+    for (let i = 0; i < 60; i++) {
+      const x = rand(z.x0, z.x1), y = rand(z.y0, z.y1);
+      if (this.isAreaClear(x, y, radius)) return { x, y };
+    }
+    return this.randomPoint(120, radius);
+  }
+
+  makeMonster(mtype) {
+    const c = this.cfg.monsters[mtype];
+    const p = this.spawnInZone(c.zone, c.radius || 14);
+    return new Monster(mtype, p.x, p.y, this.cfg);
+  }
+
   makeSlime() {
     const p = this.randomPoint();
     return new Slime(p.x, p.y, this.cfg);
@@ -96,6 +117,10 @@ class World {
     const p = this.players.get(id);
     if (p) {
       this.players.delete(id);
+      // disconnect forfeits boss contribution for the current boss life
+      for (const m of this.monsters) {
+        if (m.dmgBy) delete m.dmgBy[id];
+      }
       this.bus.emit('player:leave', p);
     }
   }
@@ -127,8 +152,14 @@ class World {
         ...p.serialize(),
         xpNeed: this.cfg.xpNeed(p.level), // always in sync with the server curve
       })),
-      slimes: this.slimes.map((s) => s.serialize()),
-      items: this.items.map((i) => ({ id: i.id, item: i.item, x: i.x, y: i.y })),
+      monsters: this.monsters.map((m) => m.serialize()),
+      projectiles: this.projectiles.map((pr) => ({
+        id: pr.id, x: Math.round(pr.x), y: Math.round(pr.y),
+      })),
+      items: this.items.map((i) => ({
+        id: i.id, item: i.item, x: i.x, y: i.y,
+        ...(i.amount != null ? { amount: i.amount } : {}),
+      })),
     };
   }
 }

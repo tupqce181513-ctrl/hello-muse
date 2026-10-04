@@ -26,6 +26,8 @@ world.bus.on('player:levelup', (p) => world.addChat('Server', `${p.name} đã l�
 world.bus.on('quest:accepted', (p, q) => world.addChat('Server', `📜 ${p.name} đã nhận nhiệm vụ: ${q.name}`));
 world.bus.on('quest:ready', (p, q) => world.addChat('Server', `✅ ${p.name} đã hoàn thành "${q.name}" — về gặp ${questGiverName(q)} để trả!`));
 world.bus.on('quest:turnin', (p, q, r) => world.addChat('Server', `🎁 ${p.name} nhận thưởng "${q.name}" (+${r.xp || 0} XP, +${r.gold || 0} vàng)`));
+world.bus.on('boss:down', (s, names) => world.addChat('Server',
+  `👑 Slime King đã gục ngã! Vinh danh: ${names.length ? names.join(', ') : 'không ai'}`));
 
 function questGiverName(q) {
   const npc = config.npcs.find((n) => n.id === q.giver);
@@ -40,7 +42,7 @@ app.use(express.static(DIST));
 app.get('/api/health', (req, res) => res.json({
   ok: true,
   players: world.players.size,
-  slimesAlive: world.slimes.filter((s) => !s.dead).length,
+  monstersAlive: world.monsters.filter((m) => !m.dead).length,
   uptime: Math.round(process.uptime()),
 }));
 app.get('/api/players', (req, res) => res.json(
@@ -74,6 +76,9 @@ const RATE_LIMITS = {
   npc:      { n: 5,  per: 1000 },
   quest_accept: { n: 5, per: 1000 },
   quest_turnin: { n: 5, per: 1000 },
+  use_item:  { n: 4,  per: 1000 },
+  equip:     { n: 4,  per: 1000 },
+  unequip:   { n: 4,  per: 1000 },
 };
 function checkRate(ctx, type) {
   const lim = RATE_LIMITS[type];
@@ -182,6 +187,21 @@ router.on('quest_turnin', schemas.QuestTurnIn, (ctx, m) => {
   }
 });
 
+router.on('use_item', schemas.UseItem, (ctx, m) => {
+  if (!checkRate(ctx, 'use_item')) return;
+  if (ctx.player) systems.useItem(ctx.world, ctx.player, m.uid);
+});
+
+router.on('equip', schemas.Equip, (ctx, m) => {
+  if (!checkRate(ctx, 'equip')) return;
+  if (ctx.player) systems.equipItem(ctx.world, ctx.player, m.uid);
+});
+
+router.on('unequip', schemas.Unequip, (ctx, m) => {
+  if (!checkRate(ctx, 'unequip')) return;
+  if (ctx.player) systems.unequipItem(ctx.world, ctx.player, m.slot);
+});
+
 router.on('chat', schemas.Chat, (ctx, m) => {
   if (!checkRate(ctx, 'chat')) return;
   if (ctx.player && !ctx.player.dead) ctx.world.addChat(ctx.player.name, m.text);
@@ -205,7 +225,8 @@ setInterval(() => {
   last = now;
   systems.movement(world, dt);
   systems.skillsTick(world, dt);
-  systems.slimeAI(world, dt);
+  systems.monsterAI(world, dt);
+  systems.projectileTick(world, dt);
   systems.pickupTick(world);
   systems.respawn(world);
   broadcast({ t: 'state', ...world.snapshot() });

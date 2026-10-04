@@ -55,7 +55,7 @@ ok(p.x > x0 + 30, `dash moved player (dx=${Math.round(p.x - x0)})`);
 ok(systems.castSkill(world, p, 'whirlwind') === false, 'locked skill cannot cast');
 
 // --- cast: whirlwind damages nearby slimes ---
-const s = world.slimes[0];
+const s = world.monsters[0];
 s.x = p.x + 50; s.y = p.y; s.hp = s.maxHp;
 p.sp += 5;
 systems.unlockSkill(world, p, 'whirlwind');
