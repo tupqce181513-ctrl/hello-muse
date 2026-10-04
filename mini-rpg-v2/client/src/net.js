@@ -3,7 +3,8 @@ import { WS_URL } from './api.js';
 
 /**
  * NetworkManager — wraps the WebSocket and re-emits typed events:
- *   'welcome' ({ id, map, chat }), 'state' ({ players, slimes }), 'chat' ({ name, text })
+ *   'welcome' ({ id, map, npcs, chat }), 'state' ({ players, slimes, items }),
+ *   'chat' ({ name, text }), 'npc_dialog' ({ npc, name, quests })
  *   'status'  ('connecting' | 'open' | 'closed' | 'error')
  *
  * Dev note: when running the Vite dev server, point it at the game server with
@@ -17,7 +18,9 @@ export class Net extends Phaser.Events.EventEmitter {
     this.myId = null;
     this.players = [];
     this.slimes = [];
+    this.items = [];
     this.map = null; // tile map from 'welcome'
+    this.npcs = [];  // static NPCs from 'welcome'
     this.status = 'idle';
   }
 
@@ -50,13 +53,17 @@ export class Net extends Phaser.Events.EventEmitter {
       if (m.t === 'welcome') {
         this.myId = m.id;
         this.map = m.map || null;
+        this.npcs = m.npcs || [];
         this.emit('welcome', m);
       } else if (m.t === 'state') {
         this.players = m.players;
         this.slimes = m.slimes;
+        this.items = m.items || [];
         this.emit('state', m);
       } else if (m.t === 'chat') {
         this.emit('chat', m);
+      } else if (m.t === 'npc_dialog') {
+        this.emit('npc_dialog', m);
       }
     };
   }

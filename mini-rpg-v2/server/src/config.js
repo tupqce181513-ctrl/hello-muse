@@ -62,4 +62,56 @@ module.exports = {
       crit:  { name: 'Chí mạng',  icon: '💥', max: 5, desc: '+8% tỉ lệ chí mạng (x2 sát thương) mỗi cấp' },
     },
   },
+
+  // --- NPCs (static; rendered by the client from 'welcome') ---
+  npcs: [
+    { id: 'guide', name: 'Người dẫn đường', icon: '🧙', x: 250, y: 950,
+      greeting: 'Chào mừng đến Đồng Cỏ! Slime đang phá hoại mùa màng — cậu giúp ta chứ?' },
+  ],
+
+  // --- Items (minimal: counts only; phase 3 expands to a full inventory) ---
+  items: {
+    slime_shard: { name: 'Mảnh Slime', color: '#69f0ae' },
+  },
+  // loot table per monster kind: [{ item, chance }]
+  drops: {
+    slime: [{ item: 'slime_shard', chance: 0.5 }],
+  },
+  itemDespawnMs: 60000,
+
+  // --- Quests ---
+  // states per player: available -> active -> ready -> done (claimed).
+  // Kill credit rule (announced in quest text): only the killing blow counts,
+  // and only while the quest is active.
+  quests: [
+    {
+      id: 'slime_hunt',
+      name: 'Diệt Slime',
+      giver: 'guide',
+      desc: 'Hạ 5 slime trong đồng cỏ. Chỉ tính cho người kết liễu.',
+      objectives: [{ type: 'kill', target: 'slime', count: 5, text: 'Hạ slime' }],
+      rewards: { xp: 60, gold: 30 },
+      next: 'gather_shards',
+    },
+    {
+      id: 'gather_shards',
+      name: 'Thu thập mảnh vỡ',
+      giver: 'guide',
+      desc: 'Nhặt 3 Mảnh Slime rơi ra từ slime đã hạ.',
+      objectives: [{ type: 'collect', item: 'slime_shard', count: 3, text: 'Nhặt Mảnh Slime' }],
+      rewards: { xp: 100, gold: 50 },
+      requires: 'slime_hunt',
+      next: 'boss_hunt',
+    },
+    {
+      id: 'boss_hunt',
+      name: 'Thách đấu Boss',
+      giver: 'guide',
+      desc: 'Hạ Boss đồng cỏ.',
+      objectives: [{ type: 'kill', target: 'boss', count: 1, text: 'Hạ Boss' }],
+      rewards: { xp: 300, gold: 150 },
+      requires: 'gather_shards',
+      locked: true, // phase 3: no boss exists yet — never offered
+    },
+  ],
 };

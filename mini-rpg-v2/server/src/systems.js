@@ -102,7 +102,7 @@ function gainXp(world, p, amt) {
   }
 }
 
-/** Shared slime-damage path: flash, death, respawn, XP. */
+/** Shared slime-damage path: flash, death, respawn, XP, loot, quest credit. */
 function damageSlime(world, s, p, dmg) {
   if (s.dead) return;
   s.hp -= dmg;
@@ -112,6 +112,8 @@ function damageSlime(world, s, p, dmg) {
     s.respawnAt = Date.now() + world.cfg.slime.respawnMs;
     world.bus.emit('slime:killed', s, p);
     gainXp(world, p, world.cfg.player.xpPerKill);
+    dropLoot(world, s);
+    addKillCredit(world, p, s.kind); // only the killer's active quests count
   }
 }
 
@@ -134,7 +136,152 @@ function attack(world, p) {
   }
 }
 
-/* ---------------- Skills ---------------- */
+/* ---------------- Quests & loot ---------------- */
+
+function questDef(world, qid) {
+  return world.cfg.quests.find((q) => q.id === qid);
+}
+
+/** Per-player quest status: available | active | ready | done | locked | unavailable */
+function questStatus(world, p, qid) {
+  const q = questDef(world, qid);
+  if (!q) return 'unknown';
+  if (p.questsDone.includes(qid)) return 'done';
+  const cur = p.quests[qid];
+  if (cur) return cur.state; // 'active' | 'ready'
+  if (q.locked) return 'locked'; // phase 3 content — never offered
+  if (q.requires && !p.questsDone.includes(q.requires)) return 'unavailable';
+  return 'available';
+}
+
+function checkQuestComplete(world, p, qid) {
+  const qs = p.quests[qid];
+  const q = questDef(world, qid);
+  if (qs && qs.state === 'active' &&
+      q.objectives.every((o, i) => qs.progress[i] >= o.count)) {
+    qs.state = 'ready';
+    world.bus.emit('quest:ready', p, q);
+  }
+}
+
+/** Accept an available quest. Idempotent: only 'available' → 'active'. */
+function acceptQuest(world, p, qid) {
+  if (questStatus(world, p, qid) !== 'available') return false;
+  const q = questDef(world, qid);
+  const progress = q.objectives.map((o) => {
+    // items picked up before accepting still count (from current inventory)
+    if (o.type === 'collect') return Math.min(p.inv[o.item] || 0, o.count);
+    return 0;
+  });
+  p.quests[qid] = {
+    state: progress.every((n, i) => n >= q.objectives[i].count) ? 'ready' : 'active',
+    progress,
+  };
+  world.bus.emit('quest:accepted', p, q);
+  return true;
+}
+
+/**
+ * Turn in a ready quest. Rewards are granted exactly once: the status flips
+ * to 'done', so a repeated turn-in is ignored.
+ */
+function turnInQuest(world, p, qid) {
+  if (questStatus(world, p, qid) !== 'ready') return null;
+  const q = questDef(world, qid);
+  delete p.quests[qid];
+  p.questsDone.push(qid);
+  const rewards = q.rewards || {};
+  if (rewards.xp) gainXp(world, p, rewards.xp);
+  if (rewards.gold) p.gold += rewards.gold;
+  world.bus.emit('quest:turnin', p, q, rewards);
+  return rewards;
+}
+
+/** Kill credit: ONLY the killing blow counts, and only with the quest active. */
+function addKillCredit(world, p, target) {
+  for (const [qid, qs] of Object.entries(p.quests)) {
+    if (qs.state !== 'active') continue;
+    const q = questDef(world, qid);
+    q.objectives.forEach((o, i) => {
+      if (o.type === 'kill' && o.target === target && qs.progress[i] < o.count) {
+        qs.progress[i]++;
+        checkQuestComplete(world, p, qid);
+      }
+    });
+  }
+}
+
+function addCollectCredit(world, p, item) {
+  for (const [qid, qs] of Object.entries(p.quests)) {
+    if (qs.state !== 'active') continue;
+    const q = questDef(world, qid);
+    q.objectives.forEach((o, i) => {
+      if (o.type === 'collect' && o.item === item && qs.progress[i] < o.count) {
+        qs.progress[i]++;
+        checkQuestComplete(world, p, qid);
+      }
+    });
+  }
+}
+
+/** Roll the monster's loot table on death. */
+function dropLoot(world, s) {
+  const table = world.cfg.drops[s.kind] || [];
+  for (const d of table) {
+    if (Math.random() < d.chance) world.dropItem(d.item, s.x, s.y);
+  }
+}
+
+/** Auto-pickup on touch + despawn old loot. One pickup counts exactly once. */
+function pickupTick(world) {
+  const now = Date.now();
+  world.items = world.items.filter((it) => now < it.expiresAt);
+  for (const p of world.players.values()) {
+    if (p.dead) continue;
+    for (let i = world.items.length - 1; i >= 0; i--) {
+      const it = world.items[i];
+      if (Math.hypot(it.x - p.x, it.y - p.y) < 34) {
+        world.items.splice(i, 1); // removed from the world: cannot count twice
+        p.inv[it.item] = (p.inv[it.item] || 0) + 1;
+        addCollectCredit(world, p, it.item);
+        world.bus.emit('item:pickup', p, it.item);
+      }
+    }
+  }
+}
+
+/** Is the player close enough to talk to this NPC? */
+function nearNpc(world, p, npcId, range = 140) {
+  const npc = world.cfg.npcs.find((n) => n.id === npcId);
+  return !!npc && Math.hypot(npc.x - p.x, npc.y - p.y) <= range;
+}
+
+/** Build the npc_dialog payload with per-player quest states. */
+function dialogFor(world, p, npcId) {
+  const npc = world.cfg.npcs.find((n) => n.id === npcId);
+  if (!npc) return null;
+  const byId = Object.fromEntries(world.cfg.quests.map((q) => [q.id, q]));
+  const quests = world.cfg.quests
+    .filter((q) => q.giver === npcId)
+    .map((q) => {
+      const st = questStatus(world, p, q.id);
+      const qs = p.quests[q.id];
+      return {
+        id: q.id, name: q.name, desc: q.desc, state: st,
+        objectives: q.objectives.map((o, i) => ({
+          text: o.text,
+          have: qs ? Math.min(qs.progress[i], o.count) : 0,
+          need: o.count,
+        })),
+        rewards: q.rewards || {},
+        nextName: q.next && byId[q.next] ? byId[q.next].name : null,
+      };
+    });
+  return {
+    t: 'npc_dialog', npc: npc.id, name: npc.name, icon: npc.icon,
+    greeting: npc.greeting, quests,
+  };
+}
 
 /** Spend skill points to unlock an active skill. Returns true on success. */
 function unlockSkill(world, p, id) {
@@ -245,4 +392,4 @@ function respawn(world) {
   }
 }
 
-module.exports = { movement, skillsTick, slimeAI, respawn, attack, hurtPlayer, gainXp, damageSlime, unlockSkill, allocatePassive, castSkill, collide };
+module.exports = { movement, skillsTick, slimeAI, respawn, attack, hurtPlayer, gainXp, damageSlime, unlockSkill, allocatePassive, castSkill, questStatus, acceptQuest, turnInQuest, addKillCredit, addCollectCredit, dropLoot, pickupTick, nearNpc, dialogFor, collide };

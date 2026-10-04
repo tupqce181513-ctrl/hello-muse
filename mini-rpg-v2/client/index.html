@@ -17,10 +17,13 @@
       <div class="bar xp"><div id="xp-fill"></div></div>
     </div>
     <div id="online">🟢 0 online</div>
+    <div id="gold">🪙 0</div>
     <div id="conn-status" data-status="idle">⚪ Chưa kết nối</div>
     <button id="music-btn" title="Bật/tắt nhạc">🔊</button>
     <button id="skill-btn" title="Bảng kỹ năng (K)">🎯</button>
   </div>
+  <div id="quest-tracker"></div>
+  <div id="toasts"></div>
   <div id="skill-bar"></div>
   <div id="skill-panel" hidden>
     <div id="skill-panel-head">
@@ -38,6 +41,18 @@
   <div id="touch-ui" hidden>
     <div id="joystick"><div id="stick"></div></div>
     <button id="atk-btn">⚔️</button>
+    <button id="npc-btn" hidden>💬</button>
+  </div>
+
+  <div id="npc-dialog" hidden>
+    <div class="panel">
+      <div id="npc-head">
+        <span id="npc-name"></span>
+        <button id="npc-close">✕</button>
+      </div>
+      <p id="npc-text"></p>
+      <div id="npc-quests"></div>
+    </div>
   </div>
 
   <div id="join-overlay">

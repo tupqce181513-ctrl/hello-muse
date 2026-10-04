@@ -5,6 +5,22 @@ import { createFX } from '../fx.js';
 import { sfx } from '../audio.js';
 import { PlayerView } from '../entities/PlayerView.js';
 import { SlimeView } from '../entities/SlimeView.js';
+import { NpcView } from '../entities/NpcView.js';
+import { ItemView } from '../entities/ItemView.js';
+
+/** Client mirror of the server quest status (for the NPC "!" marker). */
+function questMarker(npcId, me, defs) {
+  let active = false;
+  for (const q of defs) {
+    if (q.giver !== npcId || q.locked) continue;
+    if (me.questsDone && me.questsDone.includes(q.id)) continue;
+    const qs = me.quests && me.quests[q.id];
+    if (qs && qs.state === 'ready') return '!';
+    if (qs && qs.state === 'active') { active = true; continue; }
+    if (!q.requires || (me.questsDone && me.questsDone.includes(q.requires))) return '!';
+  }
+  return active ? '?' : null;
+}
 
 /**
  * GameScene — owns world rendering + input. No simulation here:
@@ -24,9 +40,14 @@ export class GameScene extends Phaser.Scene {
   create() {
     this.net = this.registry.get('net');
     this.views = new Map(); // 'p<id>' | 's<id>' -> view
+    this.npcViews = new Map(); // npcId -> NpcView
+    this.itemViews = new Map(); // itemId -> ItemView
     this.prevFlash = new Map();
     this.prevLevel = null;
     this.prevDead = false;
+    this.prevQuestSig = '';
+    this.prevInvSig = '';
+    this.nearNpcId = null;
 
     // The map arrives with 'welcome'; draw everything once we have it.
     if (this.net.map) this.buildWorld();
@@ -38,6 +59,7 @@ export class GameScene extends Phaser.Scene {
     this.enterKey = this.input.keyboard.addKey('ENTER');
     this.numKeys = this.input.keyboard.addKeys('ONE,TWO,THREE');
     this.kKey = this.input.keyboard.addKey('K');
+    this.eKey = this.input.keyboard.addKey('E');
     this.prevCast = new Map();
 
     this.net.on('state', () => this.sync());
@@ -61,10 +83,20 @@ export class GameScene extends Phaser.Scene {
     this.bg = createBackground(this, this.worldSize);
     drawMap(this, map);
 
+    // static NPCs (from welcome)
+    for (const npc of this.net.npcs || []) {
+      this.npcViews.set(npc.id, new NpcView(this, npc));
+    }
+
     // Slight overscroll so the parallax backdrop shows at the edges.
     const M = 160;
     this.cameras.main.setBounds(-M, -M, this.worldSize.w + 2 * M, this.worldSize.h + 2 * M);
     this.worldBuilt = true;
+
+    // touch NPC button → talk to the nearby NPC
+    window.__interactNpc = () => {
+      if (this.nearNpcId) this.net.send({ t: 'npc', npc: this.nearNpcId });
+    };
   }
 
   /** Reconcile views with the latest server snapshot (+ fx/sfx triggers). */
@@ -141,6 +173,59 @@ export class GameScene extends Phaser.Scene {
         else if (p.castSkill === 'heal') { sfx.heal(); this.fx.healFx(p.x, p.y); }
       }
     }
+
+    // ground items
+    const seenItems = new Set();
+    for (const it of this.net.items || []) {
+      seenItems.add(it.id);
+      if (!this.itemViews.has(it.id)) {
+        this.itemViews.set(it.id, new ItemView(this, it));
+      }
+    }
+    for (const [id, v] of this.itemViews) {
+      if (!seenItems.has(id)) { v.destroy(); this.itemViews.delete(id); }
+    }
+
+    // NPC quest markers + quest toasts + pickup FX (hero only)
+    if (me) {
+      const defs = window.__questDefs;
+      if (defs) {
+        for (const [id, nv] of this.npcViews) {
+          nv.setMarker(questMarker(id, me, defs));
+        }
+      }
+      const qsig = JSON.stringify([me.quests, me.questsDone]);
+      if (this.prevQuestSig && qsig !== this.prevQuestSig) {
+        const prev = JSON.parse(this.prevQuestSig);
+        const prevQ = prev[0] || {}, cur = me.quests || {};
+        for (const [qid, qs] of Object.entries(cur)) {
+          if (qs.state === 'ready' && (!prevQ[qid] || prevQ[qid].state !== 'ready')) {
+            const qn = this.questName(qid);
+            if (window.__toast) window.__toast(`✅ Hoàn thành: ${qn} — về trả nhiệm vụ!`);
+            sfx.quest_ready();
+          }
+        }
+        for (const qid of (me.questsDone || [])) {
+          if (!(prev[1] || []).includes(qid)) {
+            if (window.__toast) window.__toast(`🎁 Đã nhận thưởng: ${this.questName(qid)}`);
+          }
+        }
+      }
+      this.prevQuestSig = qsig;
+
+      const isig = JSON.stringify(me.inv || {});
+      if (this.prevInvSig && isig !== this.prevInvSig) {
+        sfx.pickup();
+        this.fx.burst(me.x, me.y - 10, 0x69f0ae);
+      }
+      this.prevInvSig = isig;
+    }
+  }
+
+  questName(qid) {
+    const defs = window.__questDefs || [];
+    const q = defs.find((d) => d.id === qid);
+    return q ? q.name : qid;
   }
 
   update(time, delta) {
@@ -149,6 +234,8 @@ export class GameScene extends Phaser.Scene {
     for (const v of this.views.values()) {
       if (v.frame) v.frame(delta / 1000);
     }
+    for (const v of this.npcViews.values()) v.frame(time);
+    for (const v of this.itemViews.values()) v.frame(time);
     if (!this.net || this.net.myId == null) return;
 
     const typing = window.__isTyping && window.__isTyping(); // text field focused
@@ -188,6 +275,26 @@ export class GameScene extends Phaser.Scene {
     });
     if (Phaser.Input.Keyboard.JustDown(this.enterKey)) {
       window.__focusChat();
+    }
+
+    // NPC interaction: prompt + E when the hero is in range
+    const hero = this.net.me();
+    let nearId = null;
+    if (hero && !hero.dead) {
+      for (const [id, nv] of this.npcViews) {
+        const near = Math.hypot(nv.x - hero.x, nv.y - hero.y) < 110;
+        nv.setPrompt(near);
+        if (near) nearId = id;
+      }
+    } else {
+      for (const nv of this.npcViews.values()) nv.setPrompt(false);
+    }
+    if (nearId !== this.nearNpcId) {
+      this.nearNpcId = nearId;
+      if (window.__setNpcPrompt) window.__setNpcPrompt(!!nearId);
+    }
+    if (nearId && Phaser.Input.Keyboard.JustDown(this.eKey)) {
+      this.net.send({ t: 'npc', npc: nearId });
     }
   }
 

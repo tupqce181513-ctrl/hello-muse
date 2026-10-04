@@ -29,6 +29,10 @@ class Player extends Entity {
     this.xp = 0;
     this.level = 1;
     this.sp = 0;                              // skill points (earned on level up)
+    this.gold = 0;                            // currency (quest rewards; shops in phase 3)
+    this.inv = {};                            // minimal inventory: { itemId: count }
+    this.quests = {};                         // active: { questId: { state, progress: [] } }
+    this.questsDone = [];                     // claimed quest ids (rewards granted once)
     this.skills = [];                         // unlocked active skill ids
     this.passives = { power: 0, swift: 0, tough: 0, crit: 0 };
     this.cds = {};                            // skillId -> cooldown seconds remaining
@@ -50,7 +54,9 @@ class Player extends Entity {
       x: Math.round(this.x), y: Math.round(this.y),
       hp: Math.ceil(this.hp), maxHp: this.maxHp,
       xp: this.xp, level: this.level,
-      sp: this.sp, skills: this.skills, passives: this.passives,
+      sp: this.sp, gold: this.gold, inv: this.inv,
+      quests: this.quests, questsDone: this.questsDone,
+      skills: this.skills, passives: this.passives,
       cds: Object.fromEntries(
         Object.entries(this.cds).map(([k, v]) => [k, +v.toFixed(1)])
       ),

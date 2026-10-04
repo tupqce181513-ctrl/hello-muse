@@ -108,6 +108,22 @@ Nhạc và SFX được tổng hợp bằng Web Audio API nên không cần file
 - Mở bảng kỹ năng bằng nút 🎯 hoặc phím `K`. Mọi logic ở server (`systems.js`:
   `unlockSkill`/`allocatePassive`/`castSkill`), client chỉ hiển thị + gửi lệnh.
 
+## Hệ thống nhiệm vụ
+
+- **NPC Người dẫn đường** 🧙 ở vùng spawn an toàn. Lại gần và nhấn `E` (hoặc nút 💬
+  trên mobile) để nói chuyện, nhận/trả nhiệm vụ.
+- **Chuỗi 3 nhiệm vụ**: Diệt 5 slime → nhặt 3 Mảnh Slime → Thách đấu Boss.
+  Quest Boss ở trạng thái `locked` đến giai đoạn 3 (có boss) — chỉ hiện "Sắp ra mắt",
+  không thể nhận.
+- **Quy tắc tính kill** (ghi rõ trong mô tả quest): chỉ tính cho **người kết liễu**,
+  và chỉ khi quest đang ở trạng thái active.
+- **Trạng thái quest** do server quản lý: `available → active → ready → done`.
+  Thưởng (XP + vàng 🪙) chỉ trao **một lần** — gửi lệnh trả lặp lại bị bỏ qua.
+- **Vật phẩm**: slime rơi Mảnh Slime (50%), chạm vào là tự nhặt; mỗi món chỉ nhặt
+  được một lần (biến mất khỏi map). Inventory hiện chỉ đếm số lượng — giai đoạn 3
+  mở rộng đầy đủ.
+- Quest tracker góc phải màn hình, toast thông báo tiến độ, tiền vàng hiện trên HUD.
+
 ## Mở rộng thế nào? (ví dụ)
 
 **Thêm quái Goblin:**
