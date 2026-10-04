@@ -1,1 +1,0 @@
-{"dependencies":{"ws":"^8.18.0"},"description":"Small multiplayer 2D RPG — authoritative Node.js server + browser client over WebSockets","engines":{"node":">=18"},"main":"server.js","name":"mini-rpg","scripts":{"start":"node server.js"},"version":"1.0.0"}
