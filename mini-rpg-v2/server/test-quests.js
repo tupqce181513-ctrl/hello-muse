@@ -20,7 +20,7 @@ p.x = guide.x + 50; p.y = guide.y;
 // --- quest states ---
 ok(systems.questStatus(world, p, 'slime_hunt') === 'available', 'slime_hunt available at start');
 ok(systems.questStatus(world, p, 'gather_shards') === 'unavailable', 'gather_shards locked behind slime_hunt');
-ok(systems.questStatus(world, p, 'boss_hunt') === 'locked', 'boss quest locked until phase 3');
+ok(systems.questStatus(world, p, 'boss_hunt') === 'unavailable', 'boss quest requires gather_shards (no longer locked in phase 3)');
 ok(systems.questStatus(world, p, 'nope') === 'unknown', 'unknown quest id');
 
 // --- accept ---
@@ -34,24 +34,24 @@ ok(systems.acceptQuest(world, p, 'slime_hunt') === false, 'cannot accept twice')
 const other = world.addPlayer('Bystander', 'azure');
 other.x = guide.x + 60; other.y = guide.y;
 systems.acceptQuest(world, other, 'slime_hunt');
-const s = world.slimes[0];
+const s = world.monsters[0];
 const killerProg = () => p.quests.slime_hunt.progress[0];
 const otherProg = () => other.quests.slime_hunt.progress[0];
 systems.damageSlime(world, s, p, 9999); // p lands the killing blow
 ok(killerProg() === 1, 'killer gets credit');
 ok(otherProg() === 0, 'bystander gets no credit');
-const s2 = world.slimes[1];
+const s2 = world.monsters[1];
 systems.damageSlime(world, s2, other, 9999); // other kills one
 ok(otherProg() === 1, 'other killer gets own credit');
 ok(killerProg() === 1, 'first player unaffected by other kill');
 
 // finish the quest
 for (let i = 0; i < 4; i++) {
-  const sl = world.slimes.find((x) => !x.dead);
+  const sl = world.monsters.find((x) => !x.dead && x.mtype === 'slime') || world.monsters.find((x) => !x.dead);
   systems.damageSlime(world, sl, p, 9999);
 }
 ok(systems.questStatus(world, p, 'slime_hunt') === 'ready', 'quest ready at 5/5');
-const over = world.slimes.find((x) => !x.dead);
+const over = world.monsters.find((x) => !x.dead);
 systems.damageSlime(world, over, p, 9999);
 ok(p.quests.slime_hunt.progress[0] === 5, 'progress capped at 5');
 
@@ -71,7 +71,7 @@ ok(systems.acceptQuest(world, p, 'gather_shards') === true, 'accept gather_shard
 // force drops: kill slimes until 3 shards picked up (drop chance 0.5)
 let guard = 0;
 while ((p.quests.gather_shards?.state || 'done') !== 'ready' && guard++ < 40) {
-  const sl = world.slimes.find((x) => !x.dead);
+  const sl = world.monsters.find((x) => !x.dead && x.mtype === 'slime') || world.monsters.find((x) => !x.dead);
   systems.damageSlime(world, sl, p, 9999);
   // teleport drops to the player and run pickup
   for (const it of world.items) { it.x = p.x; it.y = p.y; }
@@ -82,7 +82,7 @@ ok(world.items.length === 0, 'picked items removed from world (count once)');
 const r2 = systems.turnInQuest(world, p, 'gather_shards');
 ok(r2 && r2.gold === 50, 'gather rewards granted');
 ok(systems.turnInQuest(world, p, 'gather_shards') === null, 'no double reward');
-ok(systems.questStatus(world, p, 'boss_hunt') === 'locked', 'boss still locked after chain');
+ok(systems.questStatus(world, p, 'boss_hunt') === 'available', 'boss quest available after chain');
 
 // --- proximity gate ---
 const far = world.addPlayer('FarAway', 'scout');
@@ -94,7 +94,7 @@ ok(systems.nearNpc(world, p, 'guide') === true, 'player near NPC');
 const d = systems.dialogFor(world, p, 'guide');
 ok(d && d.t === 'npc_dialog' && d.quests.length === 3, 'dialog lists 3 quests');
 const states = Object.fromEntries(d.quests.map((q) => [q.id, q.state]));
-ok(states.slime_hunt === 'done' && states.gather_shards === 'done' && states.boss_hunt === 'locked', 'dialog states correct');
+ok(states.slime_hunt === 'done' && states.gather_shards === 'done' && states.boss_hunt === 'available', 'dialog states correct');
 ok(systems.dialogFor(world, p, 'nope') === null, 'unknown npc -> null');
 
 console.log(`\nALL ${pass} QUEST TESTS PASS`);

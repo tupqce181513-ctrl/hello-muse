@@ -124,6 +124,37 @@ Nhạc và SFX được tổng hợp bằng Web Audio API nên không cần file
   mở rộng đầy đủ.
 - Quest tracker góc phải màn hình, toast thông báo tiến độ, tiền vàng hiện trên HUD.
 
+## Giai đoạn 3: quái mới, Boss, inventory & trang bị
+
+### Quái vật
+- Kiến trúc quái tổng quát (`Monster` + `monsterAI`), giữ slime cũ:
+  - **Slime** (8, đồng cỏ phía nam): như cũ.
+  - **Goblin** (4, phía đông): cận chiến nhanh, đòn nặng **lao tới được báo trước**
+    (vòng đỏ 0.8s) mỗi 5s.
+  - **Wisp** (3, phía bắc): bắn đạn tím từ xa, giữ khoảng cách ~260px.
+  - **Slime King** 👑 (1, đấu trường đông bắc): Boss 1500 HP với 2 hành vi —
+    **đập diện rộng** (vòng đỏ báo trước 1.2s, bán kính 150) và **gọi 2 slime nhỏ**
+    mỗi 15s. Thanh HP boss chỉ hiện khi bạn ở gần (< 700px).
+
+### Co-op Boss
+Quy tắc (ghi trong mô tả quest): gây **ít nhất 5% sát thương** lên Boss và **còn
+online** khi Boss gục → nhận thưởng (quest credit + 150 XP + 50 vàng), một lần
+mỗi lượt Boss. Ngắt kết nối = mất đóng góp. Người dưới ngưỡng không được gì.
+
+### Inventory & trang bị
+- Túi **12 ô** (nút 🎒 hoặc phím `I`): Mảnh Slime, Vàng, **Thuốc hồi máu** 🧪
+  (hồi 50% HP, hồi chiêu 5s), **Kiếm sắt** 🗡️ (+12 dmg), **Giáp da** 🦺 (+30 HP),
+  **Kiếm Vương** 👑 (+30 dmg — phần thưởng cuối).
+- Nhấn vào trang bị để mặc/tháo, nhấn thuốc để dùng. Server kiểm tra: quyền sở
+  hữu (uid), khoảng cách nhặt, túi đầy, cooldown, trạng thái chết.
+- Chỉ số trang bị **tính động**, không cộng dồn khi tháo/lắp nhiều lần.
+- Vàng rơi ra đất (🪙) tự nhặt thẳng vào ví.
+
+### Quest Boss
+Chuỗi hoàn chỉnh: Diệt Slime → Mảnh Slime → **Thách đấu Slime King**.
+Trả quest Boss nhận 300 XP + 150 vàng và **Kiếm Vương** — phần thưởng cuối
+chuyến phiêu lưu, kèm thông báo toàn server.
+
 ## Mở rộng thế nào? (ví dụ)
 
 **Thêm quái Goblin:**

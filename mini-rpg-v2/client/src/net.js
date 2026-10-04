@@ -3,7 +3,7 @@ import { WS_URL } from './api.js';
 
 /**
  * NetworkManager — wraps the WebSocket and re-emits typed events:
- *   'welcome' ({ id, map, npcs, chat }), 'state' ({ players, slimes, items }),
+ *   'welcome' ({ id, map, npcs, chat }), 'state' ({ players, monsters, projectiles, items }),
  *   'chat' ({ name, text }), 'npc_dialog' ({ npc, name, quests })
  *   'status'  ('connecting' | 'open' | 'closed' | 'error')
  *
@@ -17,7 +17,7 @@ export class Net extends Phaser.Events.EventEmitter {
     this.ws = null;
     this.myId = null;
     this.players = [];
-    this.slimes = [];
+    this.monsters = []; this.projectiles = [];
     this.items = [];
     this.map = null; // tile map from 'welcome'
     this.npcs = [];  // static NPCs from 'welcome'
@@ -57,7 +57,7 @@ export class Net extends Phaser.Events.EventEmitter {
         this.emit('welcome', m);
       } else if (m.t === 'state') {
         this.players = m.players;
-        this.slimes = m.slimes;
+        this.monsters = m.monsters; this.projectiles = m.projectiles || [];
         this.items = m.items || [];
         this.emit('state', m);
       } else if (m.t === 'chat') {

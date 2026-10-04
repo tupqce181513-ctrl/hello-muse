@@ -24,12 +24,83 @@ export function initUI(net) {
   // separately so K can still toggle it (GameScene checks __panelOpen itself).
   window.__isTyping = () =>
     document.activeElement === chatInput || document.activeElement === nameInput;
-  window.__panelOpen = () => !skillPanel.hidden;
+  window.__panelOpen = () => !skillPanel.hidden || !invPanel.hidden;
   window.__focusChat = () => chatInput.focus();
   window.__skins = {};
   window.__skillDefs = null;
   window.__questDefs = null;
   window.__toggleSkills = () => { skillPanel.hidden = !skillPanel.hidden; if (!skillPanel.hidden) renderSkillPanel(); };
+
+  /* ---- Inventory: 12 slots + equipment, server-authoritative ---- */
+  const ITEM_INFO = {
+    slime_shard:  { icon: '🟢', name: 'Mảnh Slime' },
+    gold:         { icon: '🪙', name: 'Vàng' },
+    potion:       { icon: '🧪', name: 'Thuốc hồi máu', action: 'use' },
+    sword_iron:   { icon: '🗡️', name: 'Kiếm sắt', action: 'equip' },
+    armor_leather:{ icon: '🦺', name: 'Giáp da', action: 'equip' },
+    kings_blade:  { icon: '👑', name: 'Kiếm Vương', action: 'equip' },
+  };
+  window.__itemInfo = ITEM_INFO;
+  const invPanel = $('inventory'), invGrid = $('inv-grid'), equipRow = $('equip-row');
+  const invBtn = $('inv-btn');
+  let lastInvSig = '';
+  window.__toggleInventory = () => {
+    invPanel.hidden = !invPanel.hidden;
+    if (!invPanel.hidden) renderInventory();
+  };
+  invBtn.addEventListener('click', () => window.__toggleInventory());
+  $('inv-close').addEventListener('click', () => { invPanel.hidden = true; });
+
+  function invSignature(me) {
+    if (!me) return '';
+    const inv = (me.inv || []).map((s) => (s ? `${s.uid}:${s.item}x${s.qty}` : '-')).join(',');
+    const eq = me.equip ? `${me.equip.weapon ? me.equip.weapon.uid : '-'}/${me.equip.armor ? me.equip.armor.uid : '-'}` : '';
+    return `${inv}|${eq}|${me.potionCd || 0}`;
+  }
+
+  function renderInventory() {
+    const me = net.me();
+    if (!me) return;
+    equipRow.innerHTML = '';
+    for (const slot of ['weapon', 'armor']) {
+      const div = document.createElement('div');
+      div.className = 'equip-slot';
+      const it = me.equip && me.equip[slot];
+      const info = it && ITEM_INFO[it.item];
+      div.innerHTML = info
+        ? `${info.icon}<span class="slot-label">${info.name}</span>`
+        : `<span class="slot-label">${slot === 'weapon' ? 'Vũ khí' : 'Giáp'}</span>`;
+      if (it) {
+        div.title = `Tháo ${info.name}`;
+        div.addEventListener('click', () => net.send({ t: 'unequip', slot }));
+      }
+      equipRow.appendChild(div);
+    }
+    invGrid.innerHTML = '';
+    const inv = me.inv || [];
+    for (let i = 0; i < 12; i++) {
+      const s = inv[i];
+      const div = document.createElement('div');
+      div.className = 'inv-slot';
+      if (s) {
+        const info = ITEM_INFO[s.item] || { icon: '❓', name: s.item };
+        div.innerHTML = `${info.icon}${s.qty > 1 ? `<span class="qty">${s.qty}</span>` : ''}`;
+        div.title = info.name + (info.action === 'use' ? ' — nhấn để dùng' : info.action === 'equip' ? ' — nhấn để mặc' : '');
+        div.addEventListener('click', () => {
+          if (info.action === 'use') net.send({ t: 'use_item', uid: s.uid });
+          else if (info.action === 'equip') net.send({ t: 'equip', uid: s.uid });
+        });
+        if (s.item === 'potion' && (me.potionCd || 0) > 0) {
+          const cd = document.createElement('div');
+          cd.className = 'cd';
+          cd.textContent = Math.ceil(me.potionCd);
+          div.appendChild(cd);
+        }
+      }
+      invGrid.appendChild(div);
+    }
+    lastInvSig = invSignature(me);
+  }
 
   let selectedSkin = null;
 
@@ -355,6 +426,11 @@ export function initUI(net) {
         lastSkillSig = sig;
         renderSkillPanel();
       }
+    }
+    // same for the inventory panel (12 slots + equipment + potion cooldown)
+    if (!invPanel.hidden && me) {
+      const sig = invSignature(me);
+      if (sig !== lastInvSig) renderInventory();
     }
   }
 

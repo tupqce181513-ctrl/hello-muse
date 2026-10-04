@@ -4,10 +4,16 @@ const hex = (s) => Phaser.Display.Color.HexStringToColor(s).color;
 
 const ITEM_COLORS = {
   slime_shard: '#69f0ae',
+  gold: '#ffd54f',
+  potion: '#ef5350',
+  sword_iron: '#90a4ae',
+  armor_leather: '#8d6e3f',
+  kings_blade: '#ffd54f',
 };
 
 /**
  * ItemView — small bobbing loot diamond on the ground.
+ * Color-coded per item type (matches server config).
  */
 export class ItemView extends Phaser.GameObjects.Container {
   constructor(scene, it) {

@@ -51,9 +51,24 @@ const QuestTurnIn = z.object({
   quest: z.string().max(32),
 });
 
+const UseItem = z.object({
+  t: z.literal('use_item'),
+  uid: z.string().max(16),
+});
+
+const Equip = z.object({
+  t: z.literal('equip'),
+  uid: z.string().max(16),
+});
+
+const Unequip = z.object({
+  t: z.literal('unequip'),
+  slot: z.enum(['weapon', 'armor']),
+});
+
 const Chat = z.object({
   t: z.literal('chat'),
   text: z.string().trim().min(1).max(120),
 });
 
-module.exports = { Join, Input, Attack, Unlock, Allocate, Cast, Npc, QuestAccept, QuestTurnIn, Chat };
+module.exports = { Join, Input, Attack, Unlock, Allocate, Cast, Npc, QuestAccept, QuestTurnIn, UseItem, Equip, Unequip, Chat };

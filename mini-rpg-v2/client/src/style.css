@@ -44,6 +44,15 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #1a2b1e;
   border-radius: 10px; padding: 10px 16px; font-size: 14px; opacity: 0;
   transform: translateY(-8px); transition: all .3s; max-width: 88vw; text-align: center; }
 .toast.show { opacity: 1; transform: translateY(0); }
+#boss-bar { position: fixed; top: 14px; left: 50%; transform: translateX(-50%);
+  width: min(480px, 70vw); z-index: 40; pointer-events: none; }
+#boss-bar[hidden] { display: none !important; }
+#boss-bar .boss-name { text-align: center; font-weight: bold; color: #ffd54f;
+  text-shadow: 0 2px 4px #000; margin-bottom: 4px; }
+#boss-bar .boss-track { height: 14px; background: rgba(0,0,0,.6);
+  border: 2px solid #ffd54f; border-radius: 8px; overflow: hidden; }
+#boss-bar .boss-fill { height: 100%; width: 100%;
+  background: linear-gradient(90deg, #ff1744, #ff8a65); transition: width .2s; }
 
 /* ---- NPC dialog ---- */
 #npc-dialog { position: fixed; inset: 0; z-index: 45; display: flex;
@@ -157,3 +166,28 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #1a2b1e;
 #atk-btn { position: fixed; right: 24px; bottom: 90px; width: 76px; height: 76px;
   border-radius: 50%; font-size: 30px; border: 2px solid rgba(255,255,255,.3);
   background: rgba(229,57,53,.55); z-index: 6; touch-action: none; }
+#inv-btn { position: fixed; left: 12px; bottom: 76px; z-index: 45; font-size: 22px;
+  width: 46px; height: 46px; border-radius: 50%; border: 2px solid #ffd54f;
+  background: rgba(20,20,30,.8); cursor: pointer; }
+#inventory { position: fixed; left: 12px; bottom: 130px; z-index: 55; width: 280px;
+  background: rgba(15,15,25,.95); border: 2px solid #ffd54f; border-radius: 12px;
+  padding: 10px; color: #fff; }
+#inventory[hidden] { display: none !important; }
+#inv-head { display: flex; justify-content: space-between; align-items: center;
+  font-weight: bold; margin-bottom: 8px; }
+#inv-close { background: none; border: none; color: #fff; font-size: 16px; cursor: pointer; }
+#equip-row { display: flex; gap: 8px; margin-bottom: 8px; }
+.equip-slot { flex: 1; min-height: 52px; border: 2px dashed #666; border-radius: 8px;
+  display: flex; align-items: center; justify-content: center; font-size: 24px;
+  position: relative; cursor: pointer; background: rgba(255,255,255,.03); }
+.equip-slot .slot-label { position: absolute; bottom: 2px; font-size: 9px; color: #aaa; }
+#inv-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }
+.inv-slot { aspect-ratio: 1; border: 1px solid #555; border-radius: 6px;
+  display: flex; align-items: center; justify-content: center; font-size: 22px;
+  position: relative; cursor: pointer; background: rgba(255,255,255,.04); }
+.inv-slot .qty { position: absolute; bottom: 1px; right: 3px; font-size: 10px;
+  color: #ffe082; text-shadow: 0 1px 2px #000; }
+.inv-slot .cd { position: absolute; inset: 0; background: rgba(0,0,0,.6);
+  display: flex; align-items: center; justify-content: center; font-size: 14px;
+  color: #fff; border-radius: 6px; }
+#inv-hint { font-size: 11px; color: #aaa; margin-top: 8px; text-align: center; }

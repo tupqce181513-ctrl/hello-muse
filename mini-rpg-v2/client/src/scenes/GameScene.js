@@ -5,8 +5,15 @@ import { createFX } from '../fx.js';
 import { sfx } from '../audio.js';
 import { PlayerView } from '../entities/PlayerView.js';
 import { SlimeView } from '../entities/SlimeView.js';
+import GoblinView from '../entities/GoblinView.js';
+import WispView from '../entities/WispView.js';
+import SlimeKingView from '../entities/SlimeKingView.js';
 import { NpcView } from '../entities/NpcView.js';
 import { ItemView } from '../entities/ItemView.js';
+
+const MONSTER_VIEWS = {
+  slime: SlimeView, goblin: GoblinView, wisp: WispView, slime_king: SlimeKingView,
+};
 
 /** Client mirror of the server quest status (for the NPC "!" marker). */
 function questMarker(npcId, me, defs) {
@@ -59,6 +66,7 @@ export class GameScene extends Phaser.Scene {
     this.enterKey = this.input.keyboard.addKey('ENTER');
     this.numKeys = this.input.keyboard.addKeys('ONE,TWO,THREE');
     this.kKey = this.input.keyboard.addKey('K');
+    this.iKey = this.input.keyboard.addKey('I');
     this.eKey = this.input.keyboard.addKey('E');
     this.prevCast = new Map();
 
@@ -117,8 +125,8 @@ export class GameScene extends Phaser.Scene {
       v.update(p);
     }
 
-    for (const s of this.net.slimes) {
-      const key = 's' + s.id;
+    for (const s of this.net.monsters) {
+      const key = 'm' + s.id;
       if (s.dead) {
         const v = this.views.get(key);
         if (v) { v.destroy(); this.views.delete(key); }
@@ -128,7 +136,8 @@ export class GameScene extends Phaser.Scene {
       seen.add(key);
       let v = this.views.get(key);
       if (!v) {
-        v = new SlimeView(this, s);
+        const Cls = MONSTER_VIEWS[s.mtype] || SlimeView;
+        v = new Cls(this, s);
         this.views.set(key, v);
       }
       v.update(s, this.time.now);
@@ -139,6 +148,29 @@ export class GameScene extends Phaser.Scene {
         this.fx.burst(s.x, s.y, 0xfff176);
       }
       this.prevFlash.set(s.id, s.flash);
+    }
+
+    // projectiles (wisp shots)
+    const seenPr = new Set();
+    for (const pr of this.net.projectiles || []) {
+      const key = 'pr' + pr.id;
+      seenPr.add(key);
+      let v = this.views.get(key);
+      if (!v) {
+        const g = this.add.graphics();
+        g.fillStyle(0x9c27b0, 0.35).fillCircle(0, 0, 12);
+        g.fillStyle(0xce93d8, 1).fillCircle(0, 0, 7);
+        g.setDepth(7);
+        v = { c: g, update: (p) => g.setPosition(p.x, p.y), destroy: () => g.destroy() };
+        this.views.set(key, v);
+      }
+      v.update(pr);
+    }
+    for (const [key, v] of this.views) {
+      if (key.startsWith('pr') && !seenPr.has(key)) {
+        v.destroy();
+        this.views.delete(key);
+      }
     }
 
     for (const [key, v] of this.views) {
@@ -163,11 +195,22 @@ export class GameScene extends Phaser.Scene {
       this.prevDead = me.dead;
     }
 
+    // boss HP bar: only visible when the hero is near the boss
+    const boss = this.net.monsters.find((m) => m.mtype === 'slime_king' && !m.dead);
+    const nearBoss = !!(boss && me && Math.hypot(boss.x - me.x, boss.y - me.y) < 700);
+    const bossBar = document.getElementById('boss-bar');
+    if (bossBar) {
+      bossBar.hidden = !nearBoss;
+      if (nearBoss) {
+        bossBar.querySelector('.boss-fill').style.width =
+          (100 * Math.max(0, boss.hp / boss.maxHp)) + '%';
+      }
+    }
+
     // skill cast FX for every player (driven by server castSeq)
     for (const p of this.net.players) {
       const prev = this.prevCast.get(p.id) || 0;
-      if (p.castSeq > prev) {
-        this.prevCast.set(p.id, p.castSeq);
+      if (p.castSeq > prev) {        this.prevCast.set(p.id, p.castSeq);
         if (p.castSkill === 'dash') { sfx.dash(); this.fx.dashFx(p.x, p.y); }
         else if (p.castSkill === 'whirlwind') { sfx.whirlwind(); this.fx.whirlwindFx(p.x, p.y); }
         else if (p.castSkill === 'heal') { sfx.heal(); this.fx.healFx(p.x, p.y); }
@@ -244,6 +287,9 @@ export class GameScene extends Phaser.Scene {
     // the input-blocking branch below (but not while typing in a text field)
     if (!typing && Phaser.Input.Keyboard.JustDown(this.kKey) && window.__toggleSkills) {
       window.__toggleSkills();
+    }
+    if (!typing && Phaser.Input.Keyboard.JustDown(this.iKey) && window.__toggleInventory) {
+      window.__toggleInventory();
     }
     if (typing || panelOpen) {
       this.sendInput(0, 0); // stop moving while chatting / panel open

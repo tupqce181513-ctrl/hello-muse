@@ -21,9 +21,23 @@
     <div id="conn-status" data-status="idle">⚪ Chưa kết nối</div>
     <button id="music-btn" title="Bật/tắt nhạc">🔊</button>
     <button id="skill-btn" title="Bảng kỹ năng (K)">🎯</button>
+    <button id="inv-btn" title="Túi đồ (I)">🎒</button>
+  </div>
+  <div id="inventory" hidden>
+    <div id="inv-head">
+      <span>Túi đồ</span>
+      <button id="inv-close">✕</button>
+    </div>
+    <div id="equip-row"></div>
+    <div id="inv-grid"></div>
+    <div id="inv-hint">Nhấn vào trang bị để mặc · thuốc để dùng</div>
   </div>
   <div id="quest-tracker"></div>
   <div id="toasts"></div>
+  <div id="boss-bar" hidden>
+    <div class="boss-name">👑 Slime King</div>
+    <div class="boss-track"><div class="boss-fill"></div></div>
+  </div>
   <div id="skill-bar"></div>
   <div id="skill-panel" hidden>
     <div id="skill-panel-head">
