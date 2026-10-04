@@ -8,6 +8,7 @@ const { z } = require('zod');
 const Join = z.object({
   t: z.literal('join'),
   name: z.string().trim().min(1).max(16),
+  skin: z.string().max(24).optional(), // validated against config.skins in index.js
 });
 
 const Input = z.object({

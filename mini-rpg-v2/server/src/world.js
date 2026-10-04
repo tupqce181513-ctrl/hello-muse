@@ -1,11 +1,11 @@
 'use strict';
 /**
  * World — owns all game state and emits game events on `bus`.
- * Listen on world.bus to extend behavior without touching the loop:
- *   world.bus.on('slime:killed', (slime, killer) => { ... })
- * Events: player:join | player:leave | player:death | player:respawn |
- *         player:levelup | slime:killed | chat
+ * The tile map is loaded from ../shared/maps/ and drives both
+ * collision (server) and rendering (client receives it in 'welcome').
  */
+const fs = require('fs');
+const path = require('path');
 const { EventEmitter } = require('events');
 const { Player, Slime } = require('./entities');
 
@@ -17,20 +17,54 @@ class World {
     this.bus = new EventEmitter();
     this.players = new Map(); // id -> Player
     this.slimes = [];
-    this.obstacles = config.obstacles;
     this.chatLog = [];
+
+    // Load the shared tile map (same file the client renders)
+    const mapPath = path.join(__dirname, '..', '..', 'shared', 'maps', config.mapFile);
+    this.map = JSON.parse(fs.readFileSync(mapPath, 'utf8'));
+    this.ts = this.map.tileSize;
+    this.worldW = this.map.rows[0].length * this.ts;
+    this.worldH = this.map.rows.length * this.ts;
+
     for (let i = 0; i < config.slime.count; i++) {
       this.slimes.push(this.makeSlime());
     }
   }
 
-  makeSlime() {
-    const c = this.cfg;
-    return new Slime(rand(120, c.world.w - 120), rand(120, c.world.h - 120), c);
+  /** Tile solid? Out of bounds counts as solid (invisible walls). */
+  isSolidTile(tx, ty) {
+    const rows = this.map.rows;
+    if (ty < 0 || ty >= rows.length || tx < 0 || tx >= rows[0].length) return true;
+    const tile = this.map.tiles[rows[ty][tx]];
+    return !!(tile && tile.solid);
   }
 
-  addPlayer(name) {
-    const p = new Player(name, rand(200, 400), rand(200, 400), this.cfg);
+  randomSpawn() {
+    const pts = this.map.spawnPoints;
+    const p = pts[Math.floor(Math.random() * pts.length)];
+    return { x: p.x + rand(-30, 30), y: p.y + rand(-30, 30) };
+  }
+
+  randomPoint(margin = 120) {
+    // random walkable point (used for slimes)
+    for (let i = 0; i < 50; i++) {
+      const x = rand(margin, this.worldW - margin);
+      const y = rand(margin, this.worldH - margin);
+      if (!this.isSolidTile(Math.floor(x / this.ts), Math.floor(y / this.ts))) {
+        return { x, y };
+      }
+    }
+    return { x: this.worldW / 2, y: this.worldH / 2 };
+  }
+
+  makeSlime() {
+    const p = this.randomPoint();
+    return new Slime(p.x, p.y, this.cfg);
+  }
+
+  addPlayer(name, skinId) {
+    const s = this.randomSpawn();
+    const p = new Player(name, skinId, s.x, s.y, this.cfg);
     this.players.set(p.id, p);
     this.bus.emit('player:join', p);
     return p;

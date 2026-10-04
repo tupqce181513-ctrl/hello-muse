@@ -72,6 +72,22 @@ Dev client riêng (hot reload): `cd client && npm run dev`, rồi tạo file
 - `GET /api/health` → `{ ok, players, slimesAlive, uptime }`
 - `GET /api/players` → danh sách người chơi online
 
+## Mở rộng đồ họa & âm thanh
+
+Mọi thứ đồ họa đều là module client độc lập — server không cần biết:
+
+| Muốn thêm... | Sửa file nào |
+|---|---|
+| Map mới | Thêm `shared/maps/ten-map.json` (copy `meadow.json`), trỏ `mapFile` trong `server/src/config.js`. Server tự đọc va chạm, client tự vẽ |
+| Tile/decor mới | Thêm ký tự vào `tiles` trong JSON + vẽ trong `client/src/terrain.js` (`drawMap`) |
+| Background/parallax | `client/src/background.js` — các lớp có `scrollFactor` riêng, thêm lớp mới chỉ cần 1 container |
+| Nhạc nền | `client/src/audio.js` — mảng `LEAD`/`BASS` là pattern 16 bước, thay nốt là đổi nhạc |
+| Hiệu ứng âm thanh | `music.sfx(name)` trong `audio.js` — thêm case mới rồi gọi `sfx.ten()` ở `GameScene` |
+| Particle FX | `client/src/fx.js` — thêm emitter + hàm trigger, gọi từ `GameScene.sync()` |
+| Skin nhân vật | Thêm object vào `skins` trong `server/src/config.js` (`body`, `accent`, `hat`: `none`/`cap`/`hood`/`headband`). Client tự fetch qua `GET /api/skins`, vẽ mũ trong `PlayerView.drawHat()` |
+
+Nhạc và SFX được tổng hợp bằng Web Audio API nên không cần file asset nào.
+
 ## Mở rộng thế nào? (ví dụ)
 
 **Thêm quái Goblin:**

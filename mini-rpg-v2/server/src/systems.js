@@ -7,16 +7,40 @@
 
 const rand = (a, b) => a + Math.random() * (b - a);
 
+/**
+ * Circle-vs-tilemap collision. Entities slide along solid tiles
+ * (water, trees, rocks) instead of passing through them.
+ */
 function collide(world, e) {
-  const { w, h } = world.cfg.world;
-  e.x = Math.max(e.radius, Math.min(w - e.radius, e.x));
-  e.y = Math.max(e.radius, Math.min(h - e.radius, e.y));
-  for (const o of world.obstacles) {
-    const dx = e.x - o.x, dy = e.y - o.y;
-    const d = Math.hypot(dx, dy), min = o.r + e.radius;
-    if (d < min && d > 0.001) {
-      e.x = o.x + (dx / d) * min;
-      e.y = o.y + (dy / d) * min;
+  const W = world.worldW, H = world.worldH;
+  e.x = Math.max(e.radius, Math.min(W - e.radius, e.x));
+  e.y = Math.max(e.radius, Math.min(H - e.radius, e.y));
+  const ts = world.ts;
+  const x0 = Math.floor((e.x - e.radius) / ts), x1 = Math.floor((e.x + e.radius) / ts);
+  const y0 = Math.floor((e.y - e.radius) / ts), y1 = Math.floor((e.y + e.radius) / ts);
+  for (let ty = y0; ty <= y1; ty++) {
+    for (let tx = x0; tx <= x1; tx++) {
+      if (!world.isSolidTile(tx, ty)) continue;
+      // closest point on the tile rect to the circle center
+      const cx = Math.max(tx * ts, Math.min(e.x, tx * ts + ts));
+      const cy = Math.max(ty * ts, Math.min(e.y, ty * ts + ts));
+      let dx = e.x - cx, dy = e.y - cy;
+      const d = Math.hypot(dx, dy);
+      if (d < e.radius) {
+        if (d < 0.001) {
+          // center inside the tile: push out along least-penetration axis
+          const left = e.x - tx * ts, right = tx * ts + ts - e.x;
+          const top = e.y - ty * ts, bot = ty * ts + ts - e.y;
+          const m = Math.min(left, right, top, bot);
+          if (m === left) e.x = tx * ts - e.radius;
+          else if (m === right) e.x = tx * ts + ts + e.radius;
+          else if (m === top) e.y = ty * ts - e.radius;
+          else e.y = ty * ts + ts + e.radius;
+        } else {
+          e.x = cx + (dx / d) * e.radius;
+          e.y = cy + (dy / d) * e.radius;
+        }
+      }
     }
   }
 }

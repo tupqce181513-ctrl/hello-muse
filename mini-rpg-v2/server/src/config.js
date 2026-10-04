@@ -2,12 +2,15 @@
 /**
  * Central tuning for the whole game. Change numbers here —
  * no other file needs editing to rebalance.
+ *
+ * Maps live in ../shared/maps/*.json and are loaded by world.js.
+ * Skins are validated on join and broadcast to all clients.
  */
 module.exports = {
   port: process.env.PORT || 8080,
   tickMs: 50, // 20 simulation ticks per second
 
-  world: { w: 1600, h: 1200 },
+  mapFile: 'meadow.json', // in ../shared/maps/
 
   player: {
     speed: 200,       // px per second
@@ -30,11 +33,13 @@ module.exports = {
     respawnMs: 5000,
   },
 
-  // Static colliders (also drawn as trees on the client)
-  obstacles: [
-    { x: 300, y: 300, r: 30 }, { x: 900, y: 250, r: 30 },
-    { x: 1300, y: 500, r: 30 }, { x: 500, y: 800, r: 30 },
-    { x: 1100, y: 900, r: 30 }, { x: 200, y: 1000, r: 30 },
-    { x: 750, y: 600, r: 40 }, { x: 1400, y: 150, r: 26 },
+  // Pickable character skins (id must be unique; shown in the join overlay)
+  skins: [
+    { id: 'ranger', name: 'Kiểm lâm', body: '#e74c3c', accent: '#7b2d26', hat: 'none' },
+    { id: 'azure',  name: 'Thủy thủ', body: '#3498db', accent: '#1f5f8b', hat: 'cap' },
+    { id: 'rogue',  name: 'Đạo tặc',  body: '#9b59b6', accent: '#5e3370', hat: 'hood' },
+    { id: 'scout',  name: 'Trinh sát', body: '#1abc9c', accent: '#0f6e5e', hat: 'headband' },
+    { id: 'ember',  name: 'Hỏa',      body: '#e67e22', accent: '#8a4b14', hat: 'none' },
+    { id: 'shadow', name: 'Bóng đêm', body: '#2d3436', accent: '#636e72', hat: 'hood' },
   ],
 };
