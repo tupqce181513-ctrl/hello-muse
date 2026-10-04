@@ -20,6 +20,24 @@ class MusicBox {
     this.nextAt = 0;
     this.timer = null;
     this.noiseBuf = null;
+    // music and SFX toggled independently, remembered per device
+    try {
+      this.sfxOn = localStorage.getItem('miniRpg.sfx') !== '0';
+      this.musicOn = localStorage.getItem('miniRpg.music') !== '0';
+    } catch {
+      this.sfxOn = true; this.musicOn = true;
+    }
+  }
+
+  setSfx(on) {
+    this.sfxOn = !!on;
+    try { localStorage.setItem('miniRpg.sfx', this.sfxOn ? '1' : '0'); } catch { /* ignore */ }
+  }
+
+  setMusic(on) {
+    this.musicOn = !!on;
+    try { localStorage.setItem('miniRpg.music', this.musicOn ? '1' : '0'); } catch { /* ignore */ }
+    if (!on) this.stop();
   }
 
   ensure() {
@@ -81,6 +99,7 @@ class MusicBox {
 
   /** One-shot sound effects. */
   sfx(name) {
+    if (!this.sfxOn) return;
     if (!this.ctx || this.ctx.state !== 'running') return;
     const t = this.ctx.currentTime;
     const tone = (f0, f1, dur, type, vol, delay = 0) => {

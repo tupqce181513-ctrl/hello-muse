@@ -24,7 +24,7 @@ export function initUI(net) {
   // separately so K can still toggle it (GameScene checks __panelOpen itself).
   window.__isTyping = () =>
     document.activeElement === chatInput || document.activeElement === nameInput;
-  window.__panelOpen = () => !skillPanel.hidden || !invPanel.hidden;
+  window.__panelOpen = () => !skillPanel.hidden || !invPanel.hidden || !$('tutorial').hidden || !$('npc-dialog').hidden;
   window.__focusChat = () => chatInput.focus();
   window.__skins = {};
   window.__skillDefs = null;
@@ -229,7 +229,7 @@ export function initUI(net) {
         slot.title = `${d.name}: ${d.desc}`;
         slot.innerHTML = `<span class="skill-icon">${d.icon}</span>` +
           `<span class="skill-key">${i + 1}</span>` +
-          `<div class="skill-cd"></div>`;
+          `<div class="skill-cd"></div><span class="skill-cdnum"></span>`;
         slot.addEventListener('click', () => tryCast(id));
         skillBar.appendChild(slot);
         slotEls[id] = slot;
@@ -307,11 +307,15 @@ export function initUI(net) {
       const cdLeft = (me.cds && me.cds[id]) || 0;
       const total = defs.actives[id].cd;
       const cdEl = slot.querySelector('.skill-cd');
+      const numEl = slot.querySelector('.skill-cdnum');
       if (cdLeft > 0) {
         cdEl.style.display = 'block';
         cdEl.style.height = (100 * cdLeft / total) + '%';
+        numEl.textContent = cdLeft > 1 ? Math.ceil(cdLeft) : cdLeft.toFixed(1);
+        numEl.style.display = 'flex';
       } else {
         cdEl.style.display = 'none';
+        numEl.style.display = 'none';
       }
     }
     const pts = me.sp || 0;
@@ -357,7 +361,7 @@ export function initUI(net) {
     joinBtn.disabled = true;
     joinBtn.textContent = 'Đang vào game...';
     net.join(name, selectedSkin);
-    music.start(); // user gesture: allowed to start audio
+    if (music.musicOn) music.start(); // user gesture: allowed to start audio
     sfx.join();
   });
   nameInput.focus();
@@ -406,9 +410,50 @@ export function initUI(net) {
   });
 
   musicBtn.addEventListener('click', () => {
-    const on = music.toggle();
+    const on = !music.playing;
+    music.setMusic(on);
+    if (on) music.start();
     musicBtn.textContent = on ? '🔊' : '🔇';
   });
+  // honor the saved preference on load
+  if (!music.musicOn) musicBtn.textContent = '🔇';
+  const sfxBtn = $('sfx-btn');
+  sfxBtn.textContent = music.sfxOn ? '🔔' : '🔕';
+  sfxBtn.classList.toggle('off', !music.sfxOn);
+  sfxBtn.addEventListener('click', () => {
+    music.setSfx(!music.sfxOn);
+    sfxBtn.textContent = music.sfxOn ? '🔔' : '🔕';
+    sfxBtn.classList.toggle('off', !music.sfxOn);
+  });
+
+  /* ---- Tutorial: first-visit guide, reopenable via the ❓ button ---- */
+  const tutEl = $('tutorial');
+  let seenTut = false;
+  try { seenTut = localStorage.getItem('miniRpg.tutorial') === '1'; } catch { /* ignore */ }
+  window.__showTutorial = () => { tutEl.hidden = false; };
+  $('tut-close').addEventListener('click', () => {
+    tutEl.hidden = true;
+    try { localStorage.setItem('miniRpg.tutorial', '1'); } catch { /* ignore */ }
+  });
+  $('help-btn').addEventListener('click', () => window.__showTutorial());
+  net.on('welcome', () => { if (!seenTut) { seenTut = true; window.__showTutorial(); } });
+
+  /* ---- FPS meter (F3): measure before claiming anything ---- */
+  const perfEl = document.createElement('div');
+  perfEl.id = 'perf';
+  perfEl.hidden = true;
+  document.body.appendChild(perfEl);
+  let fpsFrames = 0, fpsLast = performance.now();
+  window.__fpsTick = () => {
+    fpsFrames++;
+    const now = performance.now();
+    if (now - fpsLast >= 1000) {
+      perfEl.textContent = `${fpsFrames} fps`;
+      fpsFrames = 0;
+      fpsLast = now;
+    }
+  };
+  window.__togglePerf = () => { perfEl.hidden = !perfEl.hidden; };
 
   let lastSkillSig = '';
   function updateHUD() {
@@ -445,6 +490,16 @@ export function initUI(net) {
     if (!invPanel.hidden && me) {
       const sig = invSignature(me);
       if (sig !== lastInvSig) renderInventory();
+    }
+    // death screen with the server-driven respawn countdown
+    const deathEl = $('death-screen');
+    if (deathEl) {
+      if (me && me.dead) {
+        deathEl.hidden = false;
+        $('respawn-count').textContent = Math.ceil(me.respawnIn || 0);
+      } else {
+        deathEl.hidden = true;
+      }
     }
   }
 

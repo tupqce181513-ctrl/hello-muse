@@ -84,6 +84,8 @@ function hurtPlayer(world, p, dmg) {
   if (p.dead || p.hurtCd > 0) return;
   p.hp -= dmg;
   p.hurtCd = 0.8;
+  world.dmgEvents.push({ x: Math.round(p.x), y: Math.round(p.y - 24), amount: Math.round(dmg), kind: 'hurt' });
+  if (world.dmgEvents.length > 60) world.dmgEvents.shift();
   if (p.hp <= 0) {
     p.hp = 0;
     p.dead = true;
@@ -203,6 +205,8 @@ function damageMonster(world, s, p, dmg) {
   if (s.dead) return;
   s.hp -= dmg;
   s.flash = 0.15;
+  world.dmgEvents.push({ x: Math.round(s.x), y: Math.round(s.y - s.radius - 8), amount: Math.round(dmg), kind: 'hit' });
+  if (world.dmgEvents.length > 60) world.dmgEvents.shift();
   if (s.boss) s.dmgBy[p.id] = (s.dmgBy[p.id] || 0) + dmg; // co-op contribution
   if (s.hp <= 0) {
     s.dead = true;

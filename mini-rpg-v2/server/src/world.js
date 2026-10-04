@@ -22,6 +22,7 @@ class World {
     this.nextProjId = 1;
     this.items = []; // ground loot: { id, item, x, y, amount?, expiresAt }
     this.nextItemId = 1;
+    this.dmgEvents = []; // per-tick damage numbers: { x, y, amount, kind } (cleared after broadcast)
     this.chatLog = [];
 
     // Load the shared tile map (same file the client renders)
@@ -231,6 +232,7 @@ class World {
         id: i.id, item: i.item, x: i.x, y: i.y,
         ...(i.amount != null ? { amount: i.amount } : {}),
       })),
+      dmg: this.dmgEvents,
     };
   }
 }

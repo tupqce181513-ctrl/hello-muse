@@ -14,18 +14,21 @@ export function createFX(scene) {
   const mk = (cfg) =>
     scene.add.particles(0, 0, 'fx-dot', { ...cfg, emitting: false }).setDepth(30);
 
+  // Particle budgets are capped (maxParticles) so 20 players spamming
+  // skills can't tank the frame rate. Numbers below were chosen, not measured —
+  // no FPS claim is made here; measure on target devices before tuning.
   const hitE = mk({
     speed: { min: 60, max: 240 }, lifespan: 380,
-    scale: { start: 1, end: 0 }, quantity: 10,
+    scale: { start: 1, end: 0 }, quantity: 10, maxParticles: 120,
   });
   const levelE = mk({
     speed: { min: 40, max: 130 }, lifespan: 900,
-    scale: { start: 1.1, end: 0 }, quantity: 18,
+    scale: { start: 1.1, end: 0 }, quantity: 18, maxParticles: 160,
     emitZone: { source: new Phaser.Geom.Circle(0, 0, 24) },
   });
   const poofE = mk({
     speed: { min: 20, max: 90 }, lifespan: 700,
-    scale: { start: 1.4, end: 0 }, quantity: 12,
+    scale: { start: 1.4, end: 0 }, quantity: 12, maxParticles: 80,
   });
 
   return {

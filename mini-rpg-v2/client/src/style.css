@@ -77,10 +77,7 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #1a2b1e;
 .quest-row .q-locked { color: #90a4ae; font-size: 13px; }
 .quest-row .q-active { color: #80d8ff; font-size: 13px; }
 
-/* ---- Touch NPC button ---- */
-#npc-btn { position: fixed; right: 18px; bottom: 110px; width: 60px; height: 60px;
-  font-size: 26px; border-radius: 50%; border: 2px solid #ffd54f;
-  background: rgba(0,0,0,.6); z-index: 21; }
+/* (#npc-btn positioned with the touch layout below) */
 #music-btn { margin-top: 6px; font-size: 18px; background: rgba(0,0,0,.55);
   border: 1px solid rgba(255,255,255,.25); border-radius: 8px; padding: 4px 10px;
   cursor: pointer; }
@@ -107,6 +104,9 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #1a2b1e;
   color: #fff; opacity: .8; }
 .skill-slot .skill-cd { position: absolute; left: 0; bottom: 0; width: 100%;
   background: rgba(0,0,0,.72); display: none; pointer-events: none; }
+.skill-slot .skill-cdnum { position: absolute; inset: 0; display: none;
+  align-items: center; justify-content: center; font-size: 18px; font-weight: 800;
+  color: #fff; text-shadow: 0 2px 4px #000; pointer-events: none; }
 .skill-slot.locked { filter: grayscale(1); opacity: .45; }
 
 /* ---- Skill panel ---- */
@@ -158,18 +158,26 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #1a2b1e;
 .hint { font-size: 12px; margin-top: 14px !important; opacity: .6 !important; }
 
 #touch-ui[hidden] { display: none; }
-#joystick { position: fixed; left: 24px; bottom: 90px; width: 110px; height: 110px;
+/* Touch layout: joystick bottom-left, attack bottom-right, NPC above attack.
+ * Skill bar moves up (see media query) so nothing overlaps. */
+#joystick { position: fixed; left: 20px; bottom: 20px; width: 120px; height: 120px;
   border-radius: 50%; background: rgba(255,255,255,.12);
   border: 2px solid rgba(255,255,255,.3); z-index: 6; touch-action: none; }
-#stick { position: absolute; left: 35px; top: 35px; width: 40px; height: 40px;
+#stick { position: absolute; left: 38px; top: 38px; width: 44px; height: 44px;
   border-radius: 50%; background: rgba(255,255,255,.45); }
-#atk-btn { position: fixed; right: 24px; bottom: 90px; width: 76px; height: 76px;
-  border-radius: 50%; font-size: 30px; border: 2px solid rgba(255,255,255,.3);
+#atk-btn { position: fixed; right: 20px; bottom: 28px; width: 88px; height: 88px;
+  border-radius: 50%; font-size: 34px; border: 2px solid rgba(255,255,255,.3);
   background: rgba(229,57,53,.55); z-index: 6; touch-action: none; }
-#inv-btn { position: fixed; left: 12px; bottom: 76px; z-index: 45; font-size: 22px;
-  width: 46px; height: 46px; border-radius: 50%; border: 2px solid #ffd54f;
-  background: rgba(20,20,30,.8); cursor: pointer; }
-#inventory { position: fixed; left: 12px; bottom: 130px; z-index: 55; width: 280px;
+#npc-btn { position: fixed; right: 28px; bottom: 132px; width: 64px; height: 64px;
+  font-size: 28px; border-radius: 50%; border: 2px solid #ffd54f;
+  background: rgba(0,0,0,.6); z-index: 21; touch-action: none; }
+#hud-btns { display: flex; gap: 6px; margin-top: 8px; }
+#music-btn, #sfx-btn, #skill-btn, #inv-btn { font-size: 18px; background: rgba(0,0,0,.55);
+  border: 1px solid rgba(255,255,255,.25); border-radius: 8px; padding: 4px 10px;
+  cursor: pointer; }
+#sfx-btn.off { opacity: .45; filter: grayscale(1); }
+#inventory { position: fixed; left: 12px; bottom: 225px; z-index: 55; width: 280px;
+  max-width: 92vw;
   background: rgba(15,15,25,.95); border: 2px solid #ffd54f; border-radius: 12px;
   padding: 10px; color: #fff; }
 #inventory[hidden] { display: none !important; }
@@ -192,6 +200,74 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #1a2b1e;
   color: #fff; border-radius: 6px; }
 #inv-hint { font-size: 11px; color: #aaa; margin-top: 8px; text-align: center; }
 .save-note { color: #9ccc65; }
-#save-state { position: fixed; right: 12px; bottom: 12px; z-index: 40; font-size: 11px;
-  color: #b0bec5; background: rgba(0,0,0,.45); padding: 3px 8px; border-radius: 6px;
-  pointer-events: none; }
+#save-state { margin-top: 4px; font-size: 12px; color: #b0bec5; }
+
+/* ---- Level-up banner ---- */
+#levelup-banner { position: fixed; top: 32%; left: 50%; transform: translateX(-50%) scale(1);
+  z-index: 55; font-size: 34px; font-weight: 900; color: #ffd54f;
+  text-shadow: 0 0 18px rgba(255,213,79,.9), 0 3px 6px #000; pointer-events: none;
+  animation: banner-pop 2.2s ease-out forwards; white-space: nowrap; }
+#levelup-banner[hidden] { display: none !important; }
+@keyframes banner-pop { 0% { opacity: 0; transform: translateX(-50%) scale(.5); }
+  15% { opacity: 1; transform: translateX(-50%) scale(1.12); }
+  30% { transform: translateX(-50%) scale(1); } 80% { opacity: 1; } 100% { opacity: 0; } }
+
+/* ---- Death screen ---- */
+#death-screen { position: fixed; inset: 0; z-index: 60; display: flex;
+  align-items: center; justify-content: center; background: rgba(20,0,0,.55); }
+#death-screen[hidden] { display: none !important; }
+#death-screen .panel { text-align: center; background: rgba(30,8,8,.92);
+  border: 2px solid #e53935; border-radius: 14px; padding: 26px 34px; color: #fff; }
+.death-title { font-size: 26px; font-weight: 900; color: #ff8a80; margin-bottom: 10px; }
+.death-sub { font-size: 16px; margin-bottom: 12px; }
+.death-sub span { font-weight: 900; color: #ffd54f; font-size: 20px; }
+.death-tip { font-size: 13px; opacity: .75; max-width: 300px; }
+
+/* ---- Tutorial ---- */
+#tutorial { position: fixed; inset: 0; z-index: 70; display: flex;
+  align-items: center; justify-content: center; background: rgba(0,0,0,.6); }
+#tutorial[hidden] { display: none !important; }
+#tutorial .panel { width: min(460px, 92vw); max-height: 84vh; overflow-y: auto;
+  background: #16241a; border: 2px solid #4caf50; border-radius: 14px;
+  padding: 20px 22px; color: #fff; }
+.tut-title { font-size: 20px; font-weight: 800; color: #a5d6a7; margin-bottom: 12px; }
+.tut-list { list-style: none; display: flex; flex-direction: column; gap: 10px;
+  font-size: 14px; margin-bottom: 16px; }
+#tut-close { width: 100%; background: #2e7d32; color: #fff; border: none;
+  border-radius: 10px; padding: 12px; font-size: 16px; font-weight: bold; cursor: pointer; }
+#help-btn { position: fixed; right: 12px; bottom: 52px; z-index: 45; font-size: 20px;
+  width: 42px; height: 42px; border-radius: 50%; border: 2px solid #90a4ae;
+  background: rgba(20,20,30,.8); cursor: pointer; }
+
+/* ---- FPS meter (F3) ---- */
+#perf { position: fixed; right: 12px; bottom: 100px; z-index: 45; font-size: 11px;
+  color: #80d8ff; background: rgba(0,0,0,.55); padding: 3px 8px; border-radius: 6px;
+  pointer-events: none; font-family: monospace; }
+#perf[hidden] { display: none !important; }
+
+/* ---- Small screens (phones, narrow windows): re-stack so nothing overlaps ----
+ * 360x800 budget:
+ *   top:    HUD (left, bars 140px) + quest tracker (right, 140px)
+ *   bottom: joystick (left) + attack (right) row, skill bar above it,
+ *           chat above the skill bar, utility buttons stay in the HUD.
+ */
+@media (max-width: 700px) {
+  .bar { width: 140px; }
+  #hud { font-size: 12px; }
+  #quest-tracker { max-width: 140px; }
+  .tracker-quest { font-size: 11px; padding: 6px 8px; }
+  /* skill bar floats above the touch row */
+  #skill-bar { bottom: 152px; }
+  .skill-slot { width: 48px; height: 48px; }
+  /* chat docks above the skill bar */
+  #chat { left: 8px; right: 8px; bottom: 218px; width: auto; max-width: none; }
+  #chat-log { max-height: 90px; font-size: 12px; }
+  #chat-input { font-size: 14px; padding: 6px 8px; }
+  /* inventory opens centered above the chat */
+  #inventory { left: 50%; transform: translateX(-50%); bottom: 300px; width: 300px; }
+  /* help sits above the joystick, clear of the skill bar */
+  #help-btn { right: auto; left: 20px; bottom: 150px; }
+  #toasts { top: 110px; }
+  #boss-bar { top: 170px; }
+  .toast { font-size: 13px; }
+}

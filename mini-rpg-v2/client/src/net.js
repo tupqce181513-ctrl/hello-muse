@@ -23,6 +23,7 @@ export class Net extends Phaser.Events.EventEmitter {
     this.players = [];
     this.monsters = []; this.projectiles = [];
     this.items = [];
+    this.dmg = [];
     this.map = null; // tile map from 'welcome'
     this.npcs = [];  // static NPCs from 'welcome'
     this.status = 'idle';
@@ -87,6 +88,7 @@ export class Net extends Phaser.Events.EventEmitter {
         this.players = m.players;
         this.monsters = m.monsters; this.projectiles = m.projectiles || [];
         this.items = m.items || [];
+        this.dmg = m.dmg || []; // per-tick server damage events
         this.emit('state', m);
       } else if (m.t === 'chat') {
         this.emit('chat', m);
