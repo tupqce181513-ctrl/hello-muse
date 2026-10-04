@@ -1,13 +1,20 @@
 import Phaser from 'phaser';
-import { drawTerrain } from '../terrain.js';
+import { drawMap } from '../terrain.js';
+import { createBackground } from '../background.js';
+import { createFX } from '../fx.js';
+import { sfx } from '../audio.js';
 import { PlayerView } from '../entities/PlayerView.js';
 import { SlimeView } from '../entities/SlimeView.js';
-
-const WORLD = { w: 1600, h: 1200 };
 
 /**
  * GameScene — owns world rendering + input. No simulation here:
  * the server is authoritative; this scene only mirrors snapshots.
+ *
+ * Graphics triggers (all client-side, driven by snapshot diffs):
+ *   slime flash  -> hit sfx + spark burst
+ *   my level up  -> levelup sfx + golden sparkles
+ *   my death     -> death sfx + gray poof
+ *   my attack    -> swing sfx
  */
 export class GameScene extends Phaser.Scene {
   constructor() {
@@ -17,11 +24,13 @@ export class GameScene extends Phaser.Scene {
   create() {
     this.net = this.registry.get('net');
     this.views = new Map(); // 'p<id>' | 's<id>' -> view
+    this.prevFlash = new Map();
+    this.prevLevel = null;
+    this.prevDead = false;
 
-    drawTerrain(this, WORLD, this.net.obstacles);
-
-    const cam = this.cameras.main;
-    cam.setBounds(0, 0, WORLD.w, WORLD.h);
+    // The map arrives with 'welcome'; draw everything once we have it.
+    if (this.net.map) this.buildWorld();
+    else this.net.once('welcome', () => this.buildWorld());
 
     this.cursors = this.input.keyboard.createCursorKeys();
     this.wasd = this.input.keyboard.addKeys('W,A,S,D,J');
@@ -33,8 +42,24 @@ export class GameScene extends Phaser.Scene {
     this.lastSendAt = 0;
   }
 
-  /** Reconcile views with the latest server snapshot. */
+  buildWorld() {
+    const map = this.net.map;
+    const ts = map.tileSize;
+    this.worldSize = { w: map.rows[0].length * ts, h: map.rows.length * ts };
+
+    this.fx = createFX(this);
+    this.bg = createBackground(this, this.worldSize);
+    drawMap(this, map);
+
+    // Slight overscroll so the parallax backdrop shows at the edges.
+    const M = 160;
+    this.cameras.main.setBounds(-M, -M, this.worldSize.w + 2 * M, this.worldSize.h + 2 * M);
+    this.worldBuilt = true;
+  }
+
+  /** Reconcile views with the latest server snapshot (+ fx/sfx triggers). */
   sync() {
+    if (!this.worldBuilt) return;
     const seen = new Set();
 
     for (const p of this.net.players) {
@@ -55,6 +80,7 @@ export class GameScene extends Phaser.Scene {
       if (s.dead) {
         const v = this.views.get(key);
         if (v) { v.destroy(); this.views.delete(key); }
+        this.prevFlash.delete(s.id);
         continue;
       }
       seen.add(key);
@@ -64,6 +90,13 @@ export class GameScene extends Phaser.Scene {
         this.views.set(key, v);
       }
       v.update(s, this.time.now);
+
+      const was = this.prevFlash.get(s.id) || false;
+      if (s.flash && !was) {
+        sfx.hit();
+        this.fx.burst(s.x, s.y, 0xfff176);
+      }
+      this.prevFlash.set(s.id, s.flash);
     }
 
     for (const [key, v] of this.views) {
@@ -72,9 +105,25 @@ export class GameScene extends Phaser.Scene {
         this.views.delete(key);
       }
     }
+
+    // hero event triggers
+    const me = this.net.players.find((p) => p.id === this.net.myId);
+    if (me) {
+      if (this.prevLevel !== null && me.level > this.prevLevel) {
+        sfx.levelup();
+        this.fx.sparkle(me.x, me.y);
+      }
+      if (!this.prevDead && me.dead) {
+        sfx.death();
+        this.fx.poof(me.x, me.y);
+      }
+      this.prevLevel = me.level;
+      this.prevDead = me.dead;
+    }
   }
 
-  update() {
+  update(time, delta) {
+    if (this.bg) this.bg.update(delta / 1000);
     if (!this.net || this.net.myId == null) return;
 
     if (window.__isTyping && window.__isTyping()) {
@@ -96,6 +145,7 @@ export class GameScene extends Phaser.Scene {
       Phaser.Input.Keyboard.JustDown(w.J)
     ) {
       this.net.send({ t: 'attack' });
+      sfx.swing();
     }
     if (Phaser.Input.Keyboard.JustDown(this.enterKey)) {
       window.__focusChat();

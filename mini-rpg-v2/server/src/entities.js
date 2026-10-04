@@ -7,7 +7,6 @@
  */
 
 let nextId = 1;
-const COLORS = ['#e74c3c', '#3498db', '#f1c40f', '#9b59b6', '#1abc9c', '#e67e22', '#fd79a8'];
 
 class Entity {
   constructor(x, y, radius) {
@@ -20,11 +19,11 @@ class Entity {
 }
 
 class Player extends Entity {
-  constructor(name, x, y, cfg) {
+  constructor(name, skinId, x, y, cfg) {
     super(x, y, 16);
     this.kind = 'player';
     this.name = name;
-    this.color = COLORS[this.id % COLORS.length];
+    this.skinId = skinId;
     this.maxHp = cfg.player.maxHp;
     this.hp = this.maxHp;
     this.xp = 0;
@@ -38,7 +37,7 @@ class Player extends Entity {
   }
   serialize() {
     return {
-      id: this.id, name: this.name,
+      id: this.id, name: this.name, skin: this.skinId,
       x: Math.round(this.x), y: Math.round(this.y),
       hp: Math.ceil(this.hp), maxHp: this.maxHp,
       xp: this.xp, level: this.level,

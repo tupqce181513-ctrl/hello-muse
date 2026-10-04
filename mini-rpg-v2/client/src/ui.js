@@ -1,18 +1,47 @@
 /**
- * DOM wiring: join overlay, chat box, HUD bars, touch joystick.
+ * DOM wiring: join overlay (+ skin picker), chat box, HUD bars,
+ * touch joystick, music toggle.
  * Kept outside Phaser so UI stays simple HTML/CSS.
  */
+import { music, sfx } from './audio.js';
+
 export function initUI(net) {
   const $ = (id) => document.getElementById(id);
   const overlay = $('join-overlay'), nameInput = $('name-input'), joinBtn = $('join-btn');
+  const skinPicker = $('skin-picker');
   const chatLogEl = $('chat-log'), chatInput = $('chat-input');
   const hudHp = $('hp-fill'), hudHpText = $('hp-text'), hudXp = $('xp-fill');
   const hudLevel = $('level'), hudOnline = $('online');
+  const musicBtn = $('music-btn');
 
   window.__joy = { active: false, dx: 0, dy: 0 };
   window.__isTyping = () =>
     document.activeElement === chatInput || document.activeElement === nameInput;
   window.__focusChat = () => chatInput.focus();
+  window.__skins = {};
+
+  let selectedSkin = null;
+
+  /* Skin picker (loaded from the server so both sides share one list) */
+  fetch('api/skins')
+    .then((r) => r.json())
+    .then((skins) => {
+      for (const s of skins) {
+        window.__skins[s.id] = s;
+        const b = document.createElement('button');
+        b.className = 'skin-swatch' + (s.id === (skins[0] && skins[0].id) ? ' selected' : '');
+        b.style.background = s.body;
+        b.title = s.name;
+        b.addEventListener('click', () => {
+          selectedSkin = s.id;
+          skinPicker.querySelectorAll('.skin-swatch').forEach((el) => el.classList.remove('selected'));
+          b.classList.add('selected');
+        });
+        skinPicker.appendChild(b);
+      }
+      selectedSkin = skins[0] && skins[0].id;
+    })
+    .catch(() => { /* offline dev without server: picker stays empty */ });
 
   function addChatLine(name, text) {
     const div = document.createElement('div');
@@ -27,7 +56,7 @@ export function initUI(net) {
 
   function sendChat() {
     const t = chatInput.value.trim();
-    if (t) net.send({ t: 'chat', text: t });
+    if (t) { net.send({ t: 'chat', text: t }); }
     chatInput.value = '';
     chatInput.blur();
   }
@@ -43,10 +72,17 @@ export function initUI(net) {
 
   joinBtn.addEventListener('click', () => {
     const name = (nameInput.value.trim() || 'Hero').slice(0, 16);
-    net.join(name);
+    net.join(name, selectedSkin);
+    music.start(); // user gesture: allowed to start audio
+    sfx.join();
     overlay.hidden = true;
   });
   nameInput.focus();
+
+  musicBtn.addEventListener('click', () => {
+    const on = music.toggle();
+    musicBtn.textContent = on ? '🔊' : '🔇';
+  });
 
   function updateHUD() {
     const me = net.me();
@@ -61,7 +97,7 @@ export function initUI(net) {
   }
 
   net.on('welcome', (m) => (m.chat || []).forEach((c) => addChatLine(c.name, c.text)));
-  net.on('chat', (m) => addChatLine(m.name, m.text));
+  net.on('chat', (m) => { addChatLine(m.name, m.text); sfx.chat(); });
   net.on('state', updateHUD);
 
   /* Touch controls (only shown on touch devices) */

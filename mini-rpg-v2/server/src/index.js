@@ -40,6 +40,8 @@ app.get('/api/players', (req, res) => res.json(
     name: p.name, level: p.level, hp: Math.ceil(p.hp), maxHp: p.maxHp,
   }))
 ));
+app.get('/api/skins', (req, res) => res.json(config.skins));
+app.get('/api/map', (req, res) => res.json(world.map));
 
 /* --- WebSocket: validated message routing --- */
 const server = http.createServer(app);
@@ -56,11 +58,13 @@ const router = new Router();
 
 router.on('join', schemas.Join, (ctx, m) => {
   if (ctx.player) return;
-  ctx.player = ctx.world.addPlayer(m.name);
+  const validSkins = new Set(config.skins.map((s) => s.id));
+  const skinId = validSkins.has(m.skin) ? m.skin : config.skins[0].id;
+  ctx.player = ctx.world.addPlayer(m.name, skinId);
   ctx.ws.send(JSON.stringify({
     t: 'welcome',
     id: ctx.player.id,
-    obstacles: ctx.world.obstacles,
+    map: ctx.world.map, // client renders + same tileSize for reference
     chat: ctx.world.chatLog,
   }));
 });
