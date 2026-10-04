@@ -36,6 +36,9 @@ export class GameScene extends Phaser.Scene {
     this.wasd = this.input.keyboard.addKeys('W,A,S,D,J');
     this.spaceKey = this.input.keyboard.addKey('SPACE');
     this.enterKey = this.input.keyboard.addKey('ENTER');
+    this.numKeys = this.input.keyboard.addKeys('ONE,TWO,THREE');
+    this.kKey = this.input.keyboard.addKey('K');
+    this.prevCast = new Map();
 
     this.net.on('state', () => this.sync());
     this.lastSent = { x: 9, y: 9 };
@@ -120,6 +123,17 @@ export class GameScene extends Phaser.Scene {
       this.prevLevel = me.level;
       this.prevDead = me.dead;
     }
+
+    // skill cast FX for every player (driven by server castSeq)
+    for (const p of this.net.players) {
+      const prev = this.prevCast.get(p.id) || 0;
+      if (p.castSeq > prev) {
+        this.prevCast.set(p.id, p.castSeq);
+        if (p.castSkill === 'dash') { sfx.dash(); this.fx.dashFx(p.x, p.y); }
+        else if (p.castSkill === 'whirlwind') { sfx.whirlwind(); this.fx.whirlwindFx(p.x, p.y); }
+        else if (p.castSkill === 'heal') { sfx.heal(); this.fx.healFx(p.x, p.y); }
+      }
+    }
   }
 
   update(time, delta) {
@@ -146,6 +160,16 @@ export class GameScene extends Phaser.Scene {
     ) {
       this.net.send({ t: 'attack' });
       sfx.swing();
+    }
+    const SKILL_IDS = ['dash', 'whirlwind', 'heal'];
+    const numKeys = [this.numKeys.ONE, this.numKeys.TWO, this.numKeys.THREE];
+    numKeys.forEach((k, i) => {
+      if (Phaser.Input.Keyboard.JustDown(k) && window.__tryCast) {
+        window.__tryCast(SKILL_IDS[i]);
+      }
+    });
+    if (Phaser.Input.Keyboard.JustDown(this.kKey) && window.__toggleSkills) {
+      window.__toggleSkills();
     }
     if (Phaser.Input.Keyboard.JustDown(this.enterKey)) {
       window.__focusChat();

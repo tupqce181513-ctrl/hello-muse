@@ -13,12 +13,19 @@ export function initUI(net) {
   const hudHp = $('hp-fill'), hudHpText = $('hp-text'), hudXp = $('xp-fill');
   const hudLevel = $('level'), hudOnline = $('online');
   const musicBtn = $('music-btn');
+  const skillBar = $('skill-bar');
+  const skillPanel = $('skill-panel');
+  const skillPointsEl = $('skill-points');
+  const skillBtn = $('skill-btn');
 
   window.__joy = { active: false, dx: 0, dy: 0 };
   window.__isTyping = () =>
-    document.activeElement === chatInput || document.activeElement === nameInput;
+    document.activeElement === chatInput || document.activeElement === nameInput ||
+    !skillPanel.hidden;
   window.__focusChat = () => chatInput.focus();
   window.__skins = {};
+  window.__skillDefs = null;
+  window.__toggleSkills = () => { skillPanel.hidden = !skillPanel.hidden; if (!skillPanel.hidden) renderSkillPanel(); };
 
   let selectedSkin = null;
 
@@ -42,6 +49,112 @@ export function initUI(net) {
       selectedSkin = skins[0] && skins[0].id;
     })
     .catch(() => { /* offline dev without server: picker stays empty */ });
+
+  /* ---- Skills: definitions, bar, panel ---- */
+  const ACTIVE_ORDER = ['dash', 'whirlwind', 'heal'];
+  const slotEls = {};
+
+  fetch('api/skills')
+    .then((r) => r.json())
+    .then((defs) => {
+      window.__skillDefs = defs;
+      ACTIVE_ORDER.forEach((id, i) => {
+        const d = defs.actives[id];
+        if (!d) return;
+        const slot = document.createElement('div');
+        slot.className = 'skill-slot locked';
+        slot.title = `${d.name}: ${d.desc}`;
+        slot.innerHTML = `<span class="skill-icon">${d.icon}</span>` +
+          `<span class="skill-key">${i + 1}</span>` +
+          `<div class="skill-cd"></div>`;
+        slot.addEventListener('click', () => tryCast(id));
+        skillBar.appendChild(slot);
+        slotEls[id] = slot;
+      });
+      renderSkillPanel();
+    })
+    .catch(() => {});
+
+  function tryCast(id) {
+    const me = net.me();
+    if (!me || !me.skills.includes(id)) { sfx.error(); return; }
+    if ((me.cds && me.cds[id] || 0) > 0) { sfx.error(); return; }
+    net.send({ t: 'cast', skill: id });
+  }
+  window.__tryCast = tryCast;
+
+  function renderSkillPanel() {
+    const defs = window.__skillDefs;
+    if (!defs) return;
+    const me = net.me();
+    const sp = me ? me.skills : [];
+    const ps = me ? me.passives : {};
+    const pts = me ? me.sp : 0;
+    skillPointsEl.textContent = `Điểm kỹ năng: ${pts}`;
+
+    let html = '<h3>Kỹ năng chủ động <small>(phím 1/2/3)</small></h3>';
+    for (const id of ACTIVE_ORDER) {
+      const d = defs.actives[id];
+      const has = sp.includes(id);
+      html += `<div class="skill-row">
+        <span class="skill-icon">${d.icon}</span>
+        <div class="skill-info"><b>${d.name}</b><span>${d.desc} — hồi ${d.cd}s</span></div>
+        ${has ? '<span class="skill-owned">Đã mở</span>'
+              : `<button data-unlock="${id}" ${pts < d.cost ? 'disabled' : ''}>Mở (${d.cost} điểm)</button>`}
+      </div>`;
+    }
+    html += '<h3>Kỹ năng bị động</h3>';
+    for (const [id, d] of Object.entries(defs.passives)) {
+      const lv = ps[id] || 0;
+      const pips = '●'.repeat(lv) + '○'.repeat(d.max - lv);
+      html += `<div class="skill-row">
+        <span class="skill-icon">${d.icon}</span>
+        <div class="skill-info"><b>${d.name}</b><span>${d.desc}</span><span class="pips">${pips}</span></div>
+        ${lv >= d.max ? '<span class="skill-owned">MAX</span>'
+                      : `<button data-alloc="${id}" ${pts < 1 ? 'disabled' : ''}>+ 1 điểm</button>`}
+      </div>`;
+    }
+    $('skill-list').innerHTML = html;
+    $('skill-list').querySelectorAll('[data-unlock]').forEach((b) =>
+      b.addEventListener('click', () => {
+        net.send({ t: 'unlock', skill: b.dataset.unlock });
+        sfx.unlock();
+        setTimeout(renderSkillPanel, 150);
+      }));
+    $('skill-list').querySelectorAll('[data-alloc]').forEach((b) =>
+      b.addEventListener('click', () => {
+        net.send({ t: 'allocate', passive: b.dataset.alloc });
+        sfx.unlock();
+        setTimeout(renderSkillPanel, 150);
+      }));
+  }
+
+  $('skill-close').addEventListener('click', () => { skillPanel.hidden = true; });
+  skillBtn.addEventListener('click', () => window.__toggleSkills());
+
+  function updateSkillBar() {
+    const defs = window.__skillDefs;
+    const me = net.me();
+    if (!defs || !me) return;
+    for (const id of ACTIVE_ORDER) {
+      const slot = slotEls[id];
+      if (!slot) continue;
+      const has = me.skills.includes(id);
+      slot.classList.toggle('locked', !has);
+      const cdLeft = (me.cds && me.cds[id]) || 0;
+      const total = defs.actives[id].cd;
+      const cdEl = slot.querySelector('.skill-cd');
+      if (cdLeft > 0) {
+        cdEl.style.display = 'block';
+        cdEl.style.height = (100 * cdLeft / total) + '%';
+      } else {
+        cdEl.style.display = 'none';
+      }
+    }
+    const pts = me.sp || 0;
+    skillBtn.textContent = pts > 0 ? `🎯 ${pts}` : '🎯';
+    skillBtn.classList.toggle('has-points', pts > 0);
+  }
 
   function addChatLine(name, text) {
     const div = document.createElement('div');
@@ -84,16 +197,27 @@ export function initUI(net) {
     musicBtn.textContent = on ? '🔊' : '🔇';
   });
 
+  let lastSkillSig = '';
   function updateHUD() {
     const me = net.me();
     if (me) {
-      const need = me.level * 100;
+      const defs = window.__skillDefs;
+      const need = (defs && defs.xpTable && defs.xpTable[me.level]) || me.level * 100;
       hudHp.style.width = (100 * me.hp / me.maxHp) + '%';
       hudHpText.textContent = `${Math.ceil(me.hp)} / ${me.maxHp}`;
       hudXp.style.width = (100 * me.xp / need) + '%';
       hudLevel.textContent = 'Lv ' + me.level;
     }
     hudOnline.textContent = `🟢 ${net.players.length} online`;
+    updateSkillBar();
+    // re-render the open panel only when skill state actually changed
+    if (!skillPanel.hidden && me) {
+      const sig = `${me.sp}|${me.skills.join(',')}|${JSON.stringify(me.passives)}`;
+      if (sig !== lastSkillSig) {
+        lastSkillSig = sig;
+        renderSkillPanel();
+      }
+    }
   }
 
   net.on('welcome', (m) => (m.chat || []).forEach((c) => addChatLine(c.name, c.text)));

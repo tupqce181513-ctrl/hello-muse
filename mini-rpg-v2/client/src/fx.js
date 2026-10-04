@@ -44,5 +44,20 @@ export function createFX(scene) {
       poofE.setParticleTint(0x9e9e9e);
       poofE.explode(12, x, y);
     },
+    /** white-blue streaks, e.g. dash */
+    dashFx(x, y) {
+      hitE.setParticleTint(0xbbdefb);
+      hitE.explode(12, x, y);
+    },
+    /** expanding ring burst, e.g. whirlwind */
+    whirlwindFx(x, y) {
+      levelE.setParticleTint(0x80d8ff);
+      levelE.explode(26, x, y);
+    },
+    /** green rising sparkles, e.g. heal */
+    healFx(x, y) {
+      levelE.setParticleTint(0x69f0ae);
+      levelE.explode(16, x, y - 6);
+    },
   };
 }

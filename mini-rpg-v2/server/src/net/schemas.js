@@ -21,9 +21,24 @@ const Attack = z.object({
   t: z.literal('attack'),
 });
 
+const Unlock = z.object({
+  t: z.literal('unlock'),
+  skill: z.string().max(24),
+});
+
+const Allocate = z.object({
+  t: z.literal('allocate'),
+  passive: z.string().max(24),
+});
+
+const Cast = z.object({
+  t: z.literal('cast'),
+  skill: z.string().max(24),
+});
+
 const Chat = z.object({
   t: z.literal('chat'),
   text: z.string().trim().min(1).max(120),
 });
 
-module.exports = { Join, Input, Attack, Chat };
+module.exports = { Join, Input, Attack, Unlock, Allocate, Cast, Chat };

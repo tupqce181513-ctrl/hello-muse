@@ -47,15 +47,32 @@ function collide(world, e) {
 
 /** Integrate player movement + tick down cooldowns. */
 function movement(world, dt) {
-  const sp = world.cfg.player.speed;
+  const baseSp = world.cfg.player.speed;
   for (const p of world.players.values()) {
     if (p.dead) continue;
     p.atkCd = Math.max(0, p.atkCd - dt);
     p.hurtCd = Math.max(0, p.hurtCd - dt);
     p.atkAnim = Math.max(0, p.atkAnim - dt);
-    p.x += p.vx * sp * dt;
-    p.y += p.vy * sp * dt;
+    let sp = baseSp * p.speedMult();
+    let dx = p.vx, dy = p.vy;
+    if (p.dashT > 0) {
+      p.dashT -= dt;
+      sp = baseSp * 3.2;
+      dx = p.dashDx; dy = p.dashDy;
+    }
+    p.x += dx * sp * dt;
+    p.y += dy * sp * dt;
     collide(world, p);
+  }
+}
+
+/** Tick down active-skill cooldowns. */
+function skillsTick(world, dt) {
+  for (const p of world.players.values()) {
+    for (const k of Object.keys(p.cds)) {
+      p.cds[k] -= dt;
+      if (p.cds[k] <= 0) delete p.cds[k];
+    }
   }
 }
 
@@ -73,14 +90,28 @@ function hurtPlayer(world, p, dmg) {
 
 function gainXp(world, p, amt) {
   p.xp += amt;
-  let need = p.level * 100;
+  let need = world.cfg.xpNeed(p.level);
   while (p.xp >= need) {
     p.xp -= need;
     p.level++;
     p.maxHp += 20;
     p.hp = p.maxHp;
-    need = p.level * 100;
+    p.sp += 1; // one skill point per level
+    need = world.cfg.xpNeed(p.level);
     world.bus.emit('player:levelup', p);
+  }
+}
+
+/** Shared slime-damage path: flash, death, respawn, XP. */
+function damageSlime(world, s, p, dmg) {
+  if (s.dead) return;
+  s.hp -= dmg;
+  s.flash = 0.15;
+  if (s.hp <= 0) {
+    s.dead = true;
+    s.respawnAt = Date.now() + world.cfg.slime.respawnMs;
+    world.bus.emit('slime:killed', s, p);
+    gainXp(world, p, world.cfg.player.xpPerKill);
   }
 }
 
@@ -90,25 +121,67 @@ function attack(world, p) {
   if (p.dead || p.atkCd > 0) return;
   p.atkCd = cfg.attackCd;
   p.atkAnim = 0.18;
-  const dmg = cfg.baseDmg + (p.level - 1) * cfg.dmgPerLevel;
+  let dmg = (cfg.baseDmg + (p.level - 1) * cfg.dmgPerLevel) * p.dmgMult();
+  if (Math.random() < p.critCh()) dmg *= 2;
   for (const s of world.slimes) {
     if (s.dead) continue;
     const dx = s.x - p.x, dy = s.y - p.y;
     const d = Math.hypot(dx, dy);
     if (d < cfg.attackRange + s.radius) {
       const dot = (dx * p.fx + dy * p.fy) / (d || 1);
-      if (dot > 0.1 || d < 40) {
-        s.hp -= dmg;
-        s.flash = 0.15;
-        if (s.hp <= 0) {
-          s.dead = true;
-          s.respawnAt = Date.now() + world.cfg.slime.respawnMs;
-          world.bus.emit('slime:killed', s, p);
-          gainXp(world, p, cfg.xpPerKill);
-        }
-      }
+      if (dot > 0.1 || d < 40) damageSlime(world, s, p, dmg);
     }
   }
+}
+
+/* ---------------- Skills ---------------- */
+
+/** Spend skill points to unlock an active skill. Returns true on success. */
+function unlockSkill(world, p, id) {
+  const def = world.cfg.skills.actives[id];
+  if (!def || p.skills.includes(id) || p.sp < def.cost) return false;
+  p.sp -= def.cost;
+  p.skills.push(id);
+  world.bus.emit('player:skill', p, id);
+  return true;
+}
+
+/** Spend 1 point to level a passive (up to its max). Returns true on success. */
+function allocatePassive(world, p, id) {
+  const def = world.cfg.skills.passives[id];
+  if (!def || p.sp < 1 || (p.passives[id] || 0) >= def.max) return false;
+  p.sp -= 1;
+  p.passives[id] = (p.passives[id] || 0) + 1;
+  if (id === 'tough') {
+    p.maxHp += 20;
+    p.hp = Math.min(p.maxHp, p.hp + 20);
+  }
+  return true;
+}
+
+/** Trigger an unlocked active skill (checks cooldown). Returns true on success. */
+function castSkill(world, p, id) {
+  const def = world.cfg.skills.actives[id];
+  if (!def || p.dead || !p.skills.includes(id) || (p.cds[id] || 0) > 0) return false;
+  if (id === 'dash') {
+    p.dashT = 0.18;
+    p.dashDx = p.fx; p.dashDy = p.fy;
+  } else if (id === 'whirlwind') {
+    const cfg = world.cfg.player;
+    const dmg = (cfg.baseDmg + (p.level - 1) * cfg.dmgPerLevel) * p.dmgMult() * 1.5;
+    for (const s of world.slimes) {
+      if (s.dead) continue;
+      if (Math.hypot(s.x - p.x, s.y - p.y) < 110 + s.radius) {
+        damageSlime(world, s, p, dmg);
+      }
+    }
+  } else if (id === 'heal') {
+    p.hp = Math.min(p.maxHp, p.hp + p.maxHp * 0.4);
+  }
+  p.cds[id] = def.cd;
+  p.castSeq++;
+  p.castSkill = id;
+  return true;
 }
 
 /** Slime AI: chase nearby players, wander otherwise, damage on touch. */
@@ -170,4 +243,4 @@ function respawn(world) {
   }
 }
 
-module.exports = { movement, slimeAI, respawn, attack, hurtPlayer, gainXp, collide };
+module.exports = { movement, skillsTick, slimeAI, respawn, attack, hurtPlayer, gainXp, damageSlime, unlockSkill, allocatePassive, castSkill, collide };

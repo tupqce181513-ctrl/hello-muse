@@ -116,6 +116,11 @@ class MusicBox {
       case 'death': tone(300, 55, 0.5, 'sawtooth', 0.2); break;
       case 'join': tone(660, 660, 0.08, 'sine', 0.12); break;
       case 'chat': tone(880, 880, 0.05, 'sine', 0.06); break;
+      case 'dash': noise(0.18, 0.22, 500, 4200); break;
+      case 'whirlwind': noise(0.35, 0.25, 800, 200); tone(180, 90, 0.3, 'sawtooth', 0.1); break;
+      case 'heal': [523, 659, 784].forEach((f, i) => tone(f, f * 1.01, 0.18, 'sine', 0.14, i * 0.1)); break;
+      case 'unlock': [440, 554, 659, 880].forEach((f, i) => tone(f, f, 0.1, 'triangle', 0.14, i * 0.07)); break;
+      case 'error': tone(140, 110, 0.16, 'square', 0.12); break;
     }
   }
 }
@@ -128,4 +133,9 @@ export const sfx = {
   death: () => music.sfx('death'),
   join: () => music.sfx('join'),
   chat: () => music.sfx('chat'),
+  dash: () => music.sfx('dash'),
+  whirlwind: () => music.sfx('whirlwind'),
+  heal: () => music.sfx('heal'),
+  unlock: () => music.sfx('unlock'),
+  error: () => music.sfx('error'),
 };

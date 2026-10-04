@@ -88,6 +88,23 @@ Mọi thứ đồ họa đều là module client độc lập — server không 
 
 Nhạc và SFX được tổng hợp bằng Web Audio API nên không cần file asset nào.
 
+## Hệ thống kinh nghiệm & kỹ năng
+
+- **Kinh nghiệm**: đường cong `xpNeed(level) = 100 * level^1.25` (trong `server/src/config.js`).
+  Mỗi cấp cho **+1 điểm kỹ năng**, +20 HP tối đa, hồi đầy HP.
+- **Kỹ năng chủ động** (mở bằng điểm, dùng phím `1/2/3`, có cooldown):
+
+  | Skill | Điểm | Hồi chiêu | Hiệu ứng |
+  |---|---|---|---|
+  | 💨 Lao tới | 1 | 6s | Lướt nhanh về phía đang nhìn |
+  | 🌀 Xoáy kiếm | 2 | 8s | 150% sát thương lên quái xung quanh |
+  | 💚 Hồi máu | 2 | 20s | Hồi 40% HP tối đa |
+
+- **Kỹ năng bị động** (1 điểm/cấp, tối đa 5 cấp): ⚔️ Sức mạnh (+15% dmg), 🥾 Nhanh nhẹn
+  (+8% tốc chạy), 🛡️ Cứng cáp (+20 HP tối đa), 💥 Chí mạng (+8% tỉ lệ x2 dmg).
+- Mở bảng kỹ năng bằng nút 🎯 hoặc phím `K`. Mọi logic ở server (`systems.js`:
+  `unlockSkill`/`allocatePassive`/`castSkill`), client chỉ hiển thị + gửi lệnh.
+
 ## Mở rộng thế nào? (ví dụ)
 
 **Thêm quái Goblin:**

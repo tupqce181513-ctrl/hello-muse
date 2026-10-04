@@ -22,7 +22,7 @@ world.bus.on('player:join', (p) => world.addChat('Server', `${p.name} đã vào 
 world.bus.on('player:leave', (p) => world.addChat('Server', `${p.name} đã rời game`));
 world.bus.on('player:death', (p) => world.addChat('Server', `${p.name} đã gục ngã...`));
 world.bus.on('player:respawn', (p) => world.addChat('Server', `${p.name} đã hồi sinh`));
-world.bus.on('player:levelup', (p) => world.addChat('Server', `${p.name} đã lên cấp ${p.level}!`));
+world.bus.on('player:levelup', (p) => world.addChat('Server', `${p.name} đã lên cấp ${p.level}! (+1 điểm kỹ năng)`));
 world.bus.on('chat', (m) => broadcast({ t: 'chat', name: m.name, text: m.text }));
 
 /* --- HTTP: static client build + small JSON API --- */
@@ -42,6 +42,12 @@ app.get('/api/players', (req, res) => res.json(
 ));
 app.get('/api/skins', (req, res) => res.json(config.skins));
 app.get('/api/map', (req, res) => res.json(world.map));
+app.get('/api/skills', (req, res) => {
+  // skill definitions + XP table so the client can render bars/panels
+  const xpTable = {};
+  for (let lv = 1; lv <= 40; lv++) xpTable[lv] = config.xpNeed(lv);
+  res.json({ ...config.skills, xpTable });
+});
 
 /* --- WebSocket: validated message routing --- */
 const server = http.createServer(app);
@@ -82,6 +88,18 @@ router.on('attack', schemas.Attack, (ctx) => {
   if (ctx.player) systems.attack(ctx.world, ctx.player);
 });
 
+router.on('unlock', schemas.Unlock, (ctx, m) => {
+  if (ctx.player) systems.unlockSkill(ctx.world, ctx.player, m.skill);
+});
+
+router.on('allocate', schemas.Allocate, (ctx, m) => {
+  if (ctx.player) systems.allocatePassive(ctx.world, ctx.player, m.passive);
+});
+
+router.on('cast', schemas.Cast, (ctx, m) => {
+  if (ctx.player) systems.castSkill(ctx.world, ctx.player, m.skill);
+});
+
 router.on('chat', schemas.Chat, (ctx, m) => {
   if (ctx.player && !ctx.player.dead) ctx.world.addChat(ctx.player.name, m.text);
 });
@@ -101,6 +119,7 @@ setInterval(() => {
   const dt = Math.min(0.1, (now - last) / 1000);
   last = now;
   systems.movement(world, dt);
+  systems.skillsTick(world, dt);
   systems.slimeAI(world, dt);
   systems.respawn(world);
   broadcast({ t: 'state', ...world.snapshot() });
