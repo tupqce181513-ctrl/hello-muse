@@ -1,0 +1,1 @@
+{"dependencies":{"phaser":"^3.80.1"},"description":"Mini RPG browser client — Phaser 3 + Vite","devDependencies":{"vite":"^6.3.5"},"name":"mini-rpg-client","private":true,"scripts":{"build":"vite build","dev":"vite","preview":"vite preview"},"type":"module","version":"2.0.0"}
