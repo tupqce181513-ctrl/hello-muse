@@ -2,8 +2,16 @@
 /**
  * zod schemas for every client→server message.
  * Invalid payloads are rejected by the Router before reaching game logic.
+ *
+ * Skill/passive IDs are enums built from the config's OWN keys — a plain
+ * z.string() would accept 'toString'/'__proto__' and hit inherited properties
+ * (prototype pollution → NaN state, snapshot crash).
  */
 const { z } = require('zod');
+const config = require('../config');
+
+const ACTIVE_SKILLS = Object.keys(config.skills.actives);
+const PASSIVE_SKILLS = Object.keys(config.skills.passives);
 
 const Join = z.object({
   t: z.literal('join'),
@@ -23,17 +31,17 @@ const Attack = z.object({
 
 const Unlock = z.object({
   t: z.literal('unlock'),
-  skill: z.string().max(24),
+  skill: z.enum(ACTIVE_SKILLS),
 });
 
 const Allocate = z.object({
   t: z.literal('allocate'),
-  passive: z.string().max(24),
+  passive: z.enum(PASSIVE_SKILLS),
 });
 
 const Cast = z.object({
   t: z.literal('cast'),
-  skill: z.string().max(24),
+  skill: z.enum(ACTIVE_SKILLS),
 });
 
 const Npc = z.object({

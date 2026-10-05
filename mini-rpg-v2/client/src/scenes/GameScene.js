@@ -8,6 +8,7 @@ import { SlimeView } from '../entities/SlimeView.js';
 import GoblinView from '../entities/GoblinView.js';
 import WispView from '../entities/WispView.js';
 import SlimeKingView from '../entities/SlimeKingView.js';
+import { syncProjectiles } from '../entities/projectileSync.js';
 import { NpcView } from '../entities/NpcView.js';
 import { ItemView } from '../entities/ItemView.js';
 
@@ -154,28 +155,9 @@ export class GameScene extends Phaser.Scene {
       this.prevFlash.set(s.id, s.flash);
     }
 
-    // projectiles (wisp shots)
-    const seenPr = new Set();
-    for (const pr of this.net.projectiles || []) {
-      const key = 'pr' + pr.id;
-      seenPr.add(key);
-      let v = this.views.get(key);
-      if (!v) {
-        const g = this.add.graphics();
-        g.fillStyle(0x9c27b0, 0.35).fillCircle(0, 0, 12);
-        g.fillStyle(0xce93d8, 1).fillCircle(0, 0, 7);
-        g.setDepth(7);
-        v = { c: g, update: (p) => g.setPosition(p.x, p.y), destroy: () => g.destroy() };
-        this.views.set(key, v);
-      }
-      v.update(pr);
-    }
-    for (const [key, v] of this.views) {
-      if (key.startsWith('pr') && !seenPr.has(key)) {
-        v.destroy();
-        this.views.delete(key);
-      }
-    }
+    // projectiles (wisp shots) — keys go into the shared `seen` set so the
+    // single cleanup pass below keeps them alive across snapshots (F06)
+    syncProjectiles(this, seen);
 
     for (const [key, v] of this.views) {
       if (!seen.has(key)) {

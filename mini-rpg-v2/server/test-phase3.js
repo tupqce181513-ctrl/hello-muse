@@ -139,6 +139,35 @@ const w = () => {
   ok(systems.weaponDmg(world, p) === 30, "King's Blade +30 dmg when equipped");
 }
 
+// --- F05: a full bag must not eat the King's Blade ---
+{
+  const { world, p } = w();
+  for (const q of ['slime_hunt', 'gather_shards']) {
+    systems.acceptQuest(world, p, q);
+    p.quests[q].progress = [5];
+    systems.checkQuestComplete(world, p, q);
+    systems.turnInQuest(world, p, q);
+  }
+  systems.acceptQuest(world, p, 'boss_hunt');
+  p.quests['boss_hunt'].progress = [1];
+  systems.checkQuestComplete(world, p, 'boss_hunt');
+  // fill all 12 slots with swords
+  for (let i = 0; i < 12; i++) ok(systems.giveItem(world, p, 'sword_iron'), 'fill bag');
+  const r = systems.turnInQuest(world, p, 'boss_hunt');
+  ok(r && r.error === 'bag_full', 'turn-in refused when the bag is full');
+  ok(systems.questStatus(world, p, 'boss_hunt') === 'ready', 'quest stays ready (not done)');
+  ok(!p.questsDone.includes('boss_hunt'), 'quest not marked done');
+  ok(systems.invCount(p, 'kings_blade') === 0, 'no blade lost');
+  // make room and turn in again: exactly one blade, exactly once
+  const swordUid = p.inv.find((s) => s && s.item === 'sword_iron').uid;
+  p.inv[p.inv.findIndex((s) => s && s.uid === swordUid)] = null;
+  const r2 = systems.turnInQuest(world, p, 'boss_hunt');
+  ok(r2 && !r2.error, 'turn-in succeeds after making room');
+  ok(systems.invCount(p, 'kings_blade') === 1, 'exactly one blade granted');
+  ok(systems.questStatus(world, p, 'boss_hunt') === 'done', 'quest done');
+  ok(systems.turnInQuest(world, p, 'boss_hunt') === null, 'no double reward');
+}
+
 // --- wisp fires projectiles; goblin telegraphs; boss slams ---
 {
   const { world, p } = w();

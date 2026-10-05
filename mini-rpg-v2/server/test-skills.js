@@ -80,4 +80,25 @@ const snap = p.serialize();
 ok(snap.sp >= 0 && snap.skills.includes('dash') && snap.passives.power === 2, 'snapshot has skill state');
 ok(typeof snap.cds === 'object' && snap.castSeq === 3, 'snapshot has cds + castSeq');
 
+// --- F01: prototype pollution in skill ids ---
+for (const evil of ['toString', 'constructor', '__proto__', 'hasOwnProperty', 'valueOf']) {
+  const spBefore = p.sp;
+  ok(systems.unlockSkill(world, p, evil) === false, `unlockSkill rejects '${evil}'`);
+  ok(systems.allocatePassive(world, p, evil) === false, `allocatePassive rejects '${evil}'`);
+  ok(systems.castSkill(world, p, evil) === false, `castSkill rejects '${evil}'`);
+  ok(p.sp === spBefore && !Number.isNaN(p.sp), `sp untouched by '${evil}'`);
+  ok(!p.skills.includes(evil), `'${evil}' not in skills`);
+}
+// schema level: enums reject inherited names before they reach game logic
+const schemas = require('./src/net/schemas');
+for (const evil of ['toString', '__proto__']) {
+  ok(!schemas.Unlock.safeParse({ t: 'unlock', skill: evil }).success, `Unlock schema rejects '${evil}'`);
+  ok(!schemas.Cast.safeParse({ t: 'cast', skill: evil }).success, `Cast schema rejects '${evil}'`);
+  ok(!schemas.Allocate.safeParse({ t: 'allocate', passive: evil }).success, `Allocate schema rejects '${evil}'`);
+}
+ok(schemas.Unlock.safeParse({ t: 'unlock', skill: 'dash' }).success, 'Unlock schema accepts dash');
+// snapshot must not throw even after the attempts
+world.snapshot();
+ok(true, 'snapshot survives pollution attempts');
+
 console.log(`\nALL ${pass} SKILL TESTS PASS`);

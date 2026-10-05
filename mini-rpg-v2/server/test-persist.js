@@ -32,8 +32,11 @@ const tmpFile = () => path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'rpg-')), 
   const raw = fs.readFileSync(f, 'utf8');
   ok(!raw.includes(tok), 'raw token not stored on disk');
   ok(raw.includes(h), 'only the hash is stored');
-  await store.unbindToken(h);
-  ok(await store.tokenToId(h) === null, 'unbind revokes the token');
+  // supersede keeps the old token alive through the grace window
+  const t2 = newToken();
+  await store.supersedeToken(h, hashToken(t2), id);
+  ok(await store.tokenToId(h) === id, 'superseded token still valid in grace');
+  ok(await store.tokenToId(hashToken(t2)) === id, 'new token valid after supersede');
   await store.remove(id);
   ok(await store.getById(id) === null, 'remove deletes the record');
 }
@@ -111,7 +114,7 @@ const tmpFile = () => path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'rpg-')), 
   ok(q.potionCd === 0, 'expired potion cooldown dropped');
 }
 
-// --- token rotation flow (join -> resume -> old token dead) ---
+// --- token rotation with grace (F03): a lost welcome is recoverable ---
 {
   const f = tmpFile();
   const store = new JsonFileStore(f);
@@ -120,14 +123,43 @@ const tmpFile = () => path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'rpg-')), 
   const t1 = newToken();
   await store.bindToken(hashToken(t1), p.id);
   await store.save(world.toRecord(p));
-  // resume: old token resolves, then is revoked and replaced
-  const id = await store.tokenToId(hashToken(t1));
-  ok(id === p.id, 'token resolves to the right player (name is not the key)');
-  await store.unbindToken(hashToken(t1));
+  // resume #1: server rotates, client "loses" the welcome (keeps t1)
   const t2 = newToken();
-  await store.bindToken(hashToken(t2), p.id);
-  ok(await store.tokenToId(hashToken(t1)) === null, 'old token dead after rotation');
-  ok(await store.tokenToId(hashToken(t2)) === p.id, 'new token works');
+  await store.supersedeToken(hashToken(t1), hashToken(t2), p.id);
+  // retry with the OLD token inside the grace window: must still work
+  const retry = await store.tokenEntry(hashToken(t1));
+  ok(retry && retry.id === p.id, 'old token valid during grace (idempotent retry)');
+  ok((await store.tokenEntry(hashToken(t2))).id === p.id, 'new token valid');
+  // after the grace window the old token dies
+  store.data.tokens[hashToken(t1)].exp = Date.now() - 1; // simulate expiry
+  ok(await store.tokenEntry(hashToken(t1)) === null, 'old token rejected after grace');
+  ok(await store.tokenToId(hashToken(t1)) === null, 'tokenToId null after grace');
+}
+
+// --- old token format migrates cleanly ---
+{
+  const f = tmpFile();
+  fs.mkdirSync(path.dirname(f), { recursive: true });
+  const id = newId();
+  fs.writeFileSync(f, JSON.stringify({
+    schemaVersion: SCHEMA_VERSION,
+    players: {}, tokens: { deadbeef: id }, // pre-grace format
+  }));
+  const store = new JsonFileStore(f);
+  ok(await store.tokenToId('deadbeef') === id, 'old token format migrates');
+}
+
+// --- F04: failed writes reject instead of claiming success ---
+{
+  const dir = tmpFile(); // a FILE, not a directory
+  fs.mkdirSync(path.dirname(dir), { recursive: true });
+  fs.writeFileSync(dir, 'x');
+  const store = new JsonFileStore(path.join(dir, 'players.json'));
+  const rec = { schemaVersion: SCHEMA_VERSION, id: newId(), name: 'Fail' };
+  let rejected = false;
+  try { await store.save(rec); } catch { rejected = true; }
+  ok(rejected, 'save() rejects when the write fails');
+  ok(!fs.existsSync(path.join(dir, 'players.json')), 'no save file created');
 }
 
 // --- item uids never reused after restore ---

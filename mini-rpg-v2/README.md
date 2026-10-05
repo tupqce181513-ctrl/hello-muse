@@ -61,18 +61,16 @@ cd server && npm install && npm start
 # Mở http://localhost:8080
 ```
 
-Dev client riêng (Vite): `cd client && npm run dev` — proxy `/api` về server game
-(`VITE_WS_URL=ws://localhost:8080` cho WebSocket, xem `client/src/api.js`).
-
-Dev client riêng (hot reload): `cd client && npm run dev`, rồi tạo file
-`client/.env` với nội dung `VITE_WS_URL=ws://localhost:8080`.
+Dev client riêng (hot reload, same-origin qua proxy — không cần CORS hay env):
+`cd client && npm run dev` rồi mở `http://localhost:5173`. Vite proxy cả
+`/api` (HTTP) và `/ws` (WebSocket) về server game `:8080`, giống hệt production.
 
 Điều khiển: WASD / mũi tên di chuyển · Space đánh · Enter chat.
 Điện thoại: joystick ảo + nút ⚔️.
 
 ## API thử nhanh
 
-- `GET /api/health` → `{ ok, players, slimesAlive, uptime }`
+- `GET /api/health` → `{ ok, players, monstersAlive, uptime }`
 - `GET /api/players` → danh sách người chơi online
 
 ## Mở rộng đồ họa & âm thanh
@@ -170,8 +168,10 @@ chuyến phiêu lưu, kèm thông báo toàn server.
 - **Khi nào lưu**: autosave mỗi 30s (không ghi trong tick), ngay khi lên cấp /
   trả quest / hạ boss / ngắt kết nối.
 - **Cửa sổ mất dữ liệu**: nếu server crash, tối đa ~30s tiến trình thường
-  (đánh quái/XP/vàng nhặt) có thể mất; level-up, trả quest, hạ boss thì không
-  bao giờ mất vì đã lưu ngay. Vị trí không lưu — nối lại sẽ spawn ở điểm an toàn.
+  (đánh quái/XP/vàng nhặt) có thể mất. Level-up, trả quest, hạ boss được lưu
+  ngay (best-effort, bất đồng bộ): nếu ghi disk lỗi, tiến trình vẫn còn trong
+  RAM và autosave 30s sẽ thử lại — không cam kết tuyệt đối. Vị trí không lưu —
+  nối lại sẽ spawn ở điểm an toàn.
 - **Client**: token trong localStorage; tự nối lại khi mở trang/mất mạng với
   **backoff mũ giới hạn** (1s→30s, tối đa 10 lần), không bao giờ mở 2 socket.
   Server chỉ cho **một kết nối active** mỗi nhân vật (kết nối mới đá kết nối cũ),
