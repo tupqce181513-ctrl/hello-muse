@@ -194,11 +194,16 @@ export function initUI(net) {
   }
   $('npc-close').addEventListener('click', () => { npcDialog.hidden = true; });
 
+  let lastQuestSig = '';
   function renderQuestTracker() {
     const defs = window.__questDefs;
     const me = net.me();
     const tracker = $('quest-tracker');
-    if (!defs || !me) { tracker.innerHTML = ''; return; }
+    if (!defs || !me) { tracker.innerHTML = ''; lastQuestSig = ''; return; }
+    // R07: the tracker used to rebuild innerHTML 20x/sec — diff first
+    const sig = JSON.stringify([me.quests, me.questsDone]);
+    if (sig === lastQuestSig) return;
+    lastQuestSig = sig;
     const byId = Object.fromEntries(defs.map((q) => [q.id, q]));
     let html = '';
     for (const [qid, qs] of Object.entries(me.quests || {})) {
@@ -545,6 +550,7 @@ export function initUI(net) {
     window.addEventListener('touchcancel', endTouch); // (f)
     atkBtn.addEventListener('touchstart', (e) => {
       net.send({ t: 'attack' });
+      sfx.swing(); // R09: desktop plays this; mobile should too
       e.preventDefault();
     }, { passive: false });
   }

@@ -42,7 +42,7 @@ async function savePlayer(p) {
  * Data-loss window: up to 30s of kills/XP/gold if the server crashes;
  * level-ups, quest turn-ins and boss kills save immediately. */
 const AUTOSAVE_MS = 30000;
-setInterval(() => {
+const autosaveTimer = setInterval(() => {
   for (const p of world.players.values()) savePlayer(p);
   store.pruneTokens().catch((e) => console.error('[store] prune:', e.message));
 }, AUTOSAVE_MS);
@@ -92,9 +92,8 @@ app.get('/api/health', (req, res) => res.json({
   uptime: Math.round(process.uptime()),
 }));
 app.get('/api/players', (req, res) => res.json(
-  [...world.players.values()].map((p) => ({
-    name: p.name, level: p.level, hp: Math.ceil(p.hp), maxHp: p.maxHp,
-  }))
+  // who's online: names + levels only (HP is game-sensitive, not public)
+  [...world.players.values()].map((p) => ({ name: p.name, level: p.level }))
 ));
 app.get('/api/skins', (req, res) => res.json(config.skins));
 app.get('/api/map', (req, res) => res.json(world.map));
@@ -161,21 +160,30 @@ router.on('join', schemas.Join, async (ctx, m) => {
   if (!checkRate(ctx, 'join') || ctx.player) return;
   const validSkins = new Set(config.skins.map((s) => s.id));
   const skinId = validSkins.has(m.skin) ? m.skin : config.skins[0].id;
-  ctx.player = ctx.world.addPlayer(m.name, skinId);
-  attachSocket(ctx.player, ctx.ws);
-  // stable identity + resume token (the display name is NOT the identity)
-  const token = newToken();
-  await store.bindToken(hashToken(token), ctx.player.id);
-  await savePlayer(ctx.player);
-  ctx.ws.send(JSON.stringify({
-    t: 'welcome',
-    id: ctx.player.id,
-    name: ctx.player.name,
-    token, // keep on this device; raw tokens are never stored server-side
-    map: ctx.world.map, // client renders + same tileSize for reference
-    npcs: config.npcs,  // static NPCs (client draws them)
-    chat: ctx.world.chatLog,
-  }));
+  const p = ctx.world.addPlayer(m.name, skinId);
+  ctx.player = p;
+  attachSocket(p, ctx.ws);
+  try {
+    // stable identity + resume token (the display name is NOT the identity)
+    const token = newToken();
+    await store.bindToken(hashToken(token), p.id);
+    await savePlayer(p);
+    ctx.ws.send(JSON.stringify({
+      t: 'welcome',
+      id: p.id,
+      name: p.name,
+      token, // keep on this device; raw tokens are never stored server-side
+      map: ctx.world.map, // client renders + same tileSize for reference
+      npcs: config.npcs,  // static NPCs (client draws them)
+      chat: ctx.world.chatLog,
+    }));
+  } catch (e) {
+    // R02: never leave a ghost player (in the world, no socket, no welcome)
+    console.error('[join] persistence failed, rolling back', p.name, '-', e.message);
+    ctx.world.removePlayer(p.id);
+    if (ctx.player === p) ctx.player = null;
+    try { ctx.ws.close(1011, 'join failed, please retry'); } catch { /* gone */ }
+  }
 });
 
 router.on('resume', schemas.Resume, async (ctx, m) => {
@@ -246,7 +254,7 @@ router.on('cast', schemas.Cast, (ctx, m) => {
 
 router.on('npc', schemas.Npc, (ctx, m) => {
   if (!checkRate(ctx, 'npc')) return;
-  if (!ctx.player) return;
+  if (!ctx.player || ctx.player.dead) return; // R03: the dead don't chat up NPCs
   const d = systems.dialogFor(ctx.world, ctx.player, m.npc);
   if (d) ctx.ws.send(JSON.stringify(d));
 });
@@ -254,7 +262,7 @@ router.on('npc', schemas.Npc, (ctx, m) => {
 router.on('quest_accept', schemas.QuestAccept, (ctx, m) => {
   if (!checkRate(ctx, 'quest_accept')) return;
   const p = ctx.player;
-  if (!p) return;
+  if (!p || p.dead) return; // R03
   const q = ctx.world.cfg.quests.find((qq) => qq.id === m.quest);
   if (!q || !systems.nearNpc(ctx.world, p, q.giver)) return; // must talk to the giver
   if (systems.acceptQuest(ctx.world, p, m.quest)) {
@@ -265,7 +273,7 @@ router.on('quest_accept', schemas.QuestAccept, (ctx, m) => {
 router.on('quest_turnin', schemas.QuestTurnIn, (ctx, m) => {
   if (!checkRate(ctx, 'quest_turnin')) return;
   const p = ctx.player;
-  if (!p) return;
+  if (!p || p.dead) return; // R03
   const q = ctx.world.cfg.quests.find((qq) => qq.id === m.quest);
   if (!q || !systems.nearNpc(ctx.world, p, q.giver)) return;
   const res = systems.turnInQuest(ctx.world, p, m.quest);
@@ -344,7 +352,7 @@ let last = Date.now();
 // F12: every socket gets the PUBLIC snapshot; the owning socket additionally
 // gets its private state as `me`. Inventory/quests/gold are never broadcast.
 const conns = new Set();
-setInterval(() => {
+const mainTimer = setInterval(() => {
   const now = Date.now();
   const dt = Math.min(0.1, (now - last) / 1000);
   last = now;
@@ -355,13 +363,14 @@ setInterval(() => {
   systems.pickupTick(world);
   systems.respawn(world);
   const snap = world.snapshot();
-  const publicJson = JSON.stringify({ t: 'state', ...snap });
+  // R06: serialize the public snapshot ONCE; splice each socket's private
+  // `me` in with string surgery instead of re-serializing everything N times.
+  const publicJson = JSON.stringify({ t: 'state', ...snap }); // ends with '}'
   for (const ctx of conns) {
     if (ctx.ws.readyState !== WebSocket.OPEN) continue;
     if (ctx.player) {
-      ctx.ws.send(JSON.stringify({
-        t: 'state', ...snap, me: world.playerSelf(ctx.player),
-      }));
+      const meJson = JSON.stringify(world.playerSelf(ctx.player));
+      ctx.ws.send(publicJson.slice(0, -1) + ',"me":' + meJson + '}');
     } else {
       ctx.ws.send(publicJson);
     }
@@ -369,6 +378,30 @@ setInterval(() => {
   world.dmgEvents.length = 0; // damage numbers are per-tick events
 }, config.tickMs);
 
+/* R01: graceful shutdown — a deploy/restart must not vaporize in-flight
+ * saves. Stop the loops, flush every online player to disk, close sockets,
+ * then exit. Without this, SIGTERM kills pending disconnect-saves mid-write. */
+let shuttingDown = false;
+async function gracefulShutdown(signal) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`[shutdown] ${signal} — saving ${world.players.size} player(s)...`);
+  clearInterval(mainTimer);
+  clearInterval(autosaveTimer);
+  const rs = await Promise.allSettled([...world.players.values()].map((p) => savePlayer(p)));
+  const failed = rs.filter((r) => r.status !== 'fulfilled' || r.value !== true).length;
+  console.log(`[shutdown] saves done (${failed} failed), closing sockets...`);
+  for (const ws of wss.clients) {
+    try { ws.close(1001, 'server shutdown'); } catch { /* gone */ }
+  }
+  setTimeout(() => process.exit(failed ? 1 : 0), 500).unref();
+}
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
 server.listen(config.port, () => {
   console.log(`Mini RPG server → http://localhost:${config.port}`);
 });
+
+// exported for lifecycle tests (dead-action guards, shutdown)
+module.exports = { world, store, router, savePlayer, gracefulShutdown };

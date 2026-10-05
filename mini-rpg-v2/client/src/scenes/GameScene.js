@@ -165,6 +165,10 @@ export class GameScene extends Phaser.Scene {
         this.views.delete(key);
       }
     }
+    // R09: drop cast-sequence memory for players who left (slow leak otherwise)
+    for (const pid of this.prevCast.keys()) {
+      if (!seen.has('p' + pid)) this.prevCast.delete(pid);
+    }
 
     // floating damage numbers (server results only)
     for (const d of this.net.dmg || []) {

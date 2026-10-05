@@ -734,10 +734,13 @@ function respawn(world) {
   }
   for (const s of world.monsters) {
     if (s.dead && now >= s.respawnAt) {
-      const f = world.makeMonster(s.mtype);
-      s.x = f.x; s.y = f.y;
+      // R04: fresh life = fresh position AND fresh cooldowns (sumCd/touchCd
+      // used to leak across lives); no throwaway Monster just for its spawn.
+      const c = world.cfg.monsters[s.mtype];
+      const zp = world.spawnInZone(c.zone, c.radius || 14);
+      s.x = zp.x; s.y = zp.y;
       s.hp = s.maxHp; s.dead = false; s.flash = 0;
-      s.tele = null; s.atkCd = 0; s.dmgBy = {};
+      s.tele = null; s.atkCd = 0; s.touchCd = 0; s.sumCd = 0; s.dmgBy = {};
     }
   }
 }

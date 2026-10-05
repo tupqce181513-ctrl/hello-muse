@@ -179,6 +179,9 @@ chuyến phiêu lưu, kèm thông báo toàn server.
   ngay (best-effort, bất đồng bộ): nếu ghi disk lỗi, tiến trình vẫn còn trong
   RAM và autosave 30s sẽ thử lại — không cam kết tuyệt đối. Vị trí không lưu —
   nối lại sẽ spawn ở điểm an toàn.
+- **Tắt server đúng cách** (SIGTERM/SIGINT, ví dụ khi deploy): server dừng
+  vòng lặp, lưu toàn bộ người chơi đang online xuống disk rồi mới thoát —
+  restart/deploy không mất tiến trình đã lưu.
 - **Client**: token trong localStorage; tự nối lại khi mở trang/mất mạng với
   **backoff mũ giới hạn** (1s→30s, tối đa 10 lần), không bao giờ mở 2 socket.
   Server chỉ cho **một kết nối active** mỗi nhân vật (kết nối mới đá kết nối cũ),

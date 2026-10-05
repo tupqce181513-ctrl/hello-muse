@@ -86,6 +86,8 @@ export class Net extends Phaser.Events.EventEmitter {
         try { localStorage.removeItem(TOKEN_KEY); } catch { /* ignore */ }
         this.emit('resume_failed', m);
       } else if (m.t === 'state') {
+        // R08: never let a malformed payload poison the scene sync
+        if (!m || !Array.isArray(m.players)) return;
         this.players = m.players;
         this.self = m.me || null; // private state (inv/quests/gold) — never in players[]
         this.monsters = m.monsters; this.projectiles = m.projectiles || [];
