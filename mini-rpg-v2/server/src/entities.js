@@ -52,12 +52,32 @@ class Player extends Entity {
   dmgMult() { return 1 + 0.15 * this.passives.power; }
   speedMult() { return 1 + 0.08 * this.passives.swift; }
   critCh() { return 0.08 * this.passives.crit; }
-  serialize() {
+  /**
+   * Public snapshot: render-only data, broadcast to EVERY socket (F12).
+   * Takes the effective max HP (base + armor) as an argument so this class
+   * stays free of game-logic imports. The HUD draws the bar with it (F08).
+   */
+  serializePublic(effMaxHp) {
     return {
       id: this.id, name: this.name, skin: this.skinId,
       x: Math.round(this.x), y: Math.round(this.y),
-      hp: Math.ceil(this.hp), maxHp: this.maxHp,
-      xp: this.xp, level: this.level,
+      hp: Math.ceil(this.hp), maxHp: Math.ceil(effMaxHp),
+      level: this.level,
+      fx: +this.fx.toFixed(2), fy: +this.fy.toFixed(2),
+      dead: this.dead,
+      atkAnim: +this.atkAnim.toFixed(2),
+      castSeq: this.castSeq, castSkill: this.castSkill,
+    };
+  }
+  /**
+   * Private snapshot: the full character state, sent ONLY to the owning
+   * socket as `me` in the state message (F12). `xpNeed` is included here
+   * (it used to ride along in the public snapshot).
+   */
+  serializeSelf(effMaxHp, xpNeed) {
+    return {
+      ...this.serializePublic(effMaxHp),
+      xp: this.xp, xpNeed,
       sp: this.sp, gold: this.gold,
       inv: this.inv, equip: this.equip,
       potionCd: +this.potionCd.toFixed(1),
@@ -68,10 +88,6 @@ class Player extends Entity {
       cds: Object.fromEntries(
         Object.entries(this.cds).map(([k, v]) => [k, +v.toFixed(1)])
       ),
-      castSeq: this.castSeq, castSkill: this.castSkill,
-      fx: +this.fx.toFixed(2), fy: +this.fy.toFixed(2),
-      dead: this.dead,
-      atkAnim: +this.atkAnim.toFixed(2),
     };
   }
 }

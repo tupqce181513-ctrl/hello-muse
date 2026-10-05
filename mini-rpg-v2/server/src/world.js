@@ -9,6 +9,53 @@ const path = require('path');
 const { EventEmitter } = require('events');
 const { Player, Slime, Monster } = require('./entities');
 const { newId } = require('./persistence/store');
+const systems = require('./systems');
+
+/**
+ * Validate + sanitize a saved player record. Save data comes from disk —
+ * possibly hand-edited, corrupt, or from an older config — so it is never
+ * trusted blindly. Unfixable fields fall back to safe defaults (F14).
+ */
+function sanitizeRecord(rec) {
+  const r = rec && typeof rec === 'object' ? rec : {};
+  const num = (v, dflt, min = 0) => {
+    const n = typeof v === 'number' && Number.isFinite(v) ? v : dflt;
+    return n < min ? min : n;
+  };
+  const cleanSlot = (s) => (s && typeof s.uid === 'string' && typeof s.item === 'string'
+    ? { uid: s.uid, item: s.item, qty: Math.max(1, Math.floor(num(s.qty, 1, 1))) }
+    : null);
+  const clampRank = (v) => Math.min(5, Math.max(0, Math.floor(num(v, 0))));
+  return {
+    id: typeof r.id === 'string' && r.id ? r.id : newId(),
+    name: typeof r.name === 'string' && r.name ? r.name.slice(0, 16) : 'Hero',
+    skinId: typeof r.skinId === 'string' ? r.skinId : 'ranger',
+    level: Math.min(99, Math.max(1, Math.floor(num(r.level, 1, 1)))),
+    xp: num(r.xp, 0), sp: num(r.sp, 0), gold: num(r.gold, 0),
+    hp: num(r.hp, 0),
+    skills: Array.isArray(r.skills) ? r.skills.filter((s) => typeof s === 'string') : [],
+    passives: {
+      power: clampRank(r.passives && r.passives.power),
+      swift: clampRank(r.passives && r.passives.swift),
+      tough: clampRank(r.passives && r.passives.tough),
+      crit: clampRank(r.passives && r.passives.crit),
+    },
+    inv: Array.isArray(r.inv) && r.inv.length === 12
+      ? r.inv.map(cleanSlot) : new Array(12).fill(null),
+    equip: {
+      weapon: cleanSlot(r.equip && r.equip.weapon),
+      armor: cleanSlot(r.equip && r.equip.armor),
+    },
+    quests: r.quests && typeof r.quests === 'object' ? r.quests : {},
+    questsDone: Array.isArray(r.questsDone)
+      ? r.questsDone.filter((q) => typeof q === 'string') : [],
+    cdsExpiresAt: r.cdsExpiresAt && typeof r.cdsExpiresAt === 'object' ? r.cdsExpiresAt : {},
+    potionCdExpiresAt: num(r.potionCdExpiresAt, 0),
+    dead: r.dead === true,
+    respawnAt: num(r.respawnAt, 0),
+    savedAt: num(r.savedAt, 0),
+  };
+}
 
 const rand = (a, b) => a + Math.random() * (b - a);
 
@@ -117,37 +164,48 @@ class World {
 
   /**
    * Rebuild a player from a saved record (after restart / resume).
-   * Derived stats are recomputed from base data (armor bonus stays dynamic);
-   * cooldowns resume from absolute expiry timestamps so a reconnect never
-   * resets them. Position is intentionally fresh (safe spawn).
+   * The record is sanitized first (disk data is never trusted blindly);
+   * derived stats are RECOMPUTED from base data (F14); equipment is applied
+   * before the HP clamp so armor counts (F08); death state survives via the
+   * absolute respawn timestamp (F09); item uids are scanned in inventory AND
+   * equipment (F13). Cooldowns resume from absolute expiry timestamps so a
+   * reconnect never resets them. Position is intentionally fresh (safe spawn).
    */
   restorePlayer(rec) {
+    const r = sanitizeRecord(rec);
     const s = this.randomSpawn();
-    const p = new Player(rec.name, rec.skinId, s.x, s.y, this.cfg, rec.id);
+    const p = new Player(r.name, r.skinId, s.x, s.y, this.cfg, r.id);
     const now = Date.now();
-    p.level = rec.level || 1;
-    p.xp = rec.xp || 0;
-    p.sp = rec.sp || 0;
-    p.skills = Array.isArray(rec.skills) ? rec.skills : [];
-    p.passives = { power: 0, swift: 0, tough: 0, crit: 0, ...(rec.passives || {}) };
-    p.gold = rec.gold || 0;
-    p.maxHp = rec.maxHp || this.cfg.player.maxHp;
-    p.hp = Math.min(rec.hp != null ? rec.hp : p.maxHp, p.maxHp);
-    p.inv = Array.isArray(rec.inv) && rec.inv.length === 12 ? rec.inv : new Array(12).fill(null);
-    p.equip = rec.equip && typeof rec.equip === 'object'
-      ? { weapon: rec.equip.weapon || null, armor: rec.equip.armor || null }
-      : { weapon: null, armor: null };
-    p.quests = rec.quests && typeof rec.quests === 'object' ? rec.quests : {};
-    p.questsDone = Array.isArray(rec.questsDone) ? rec.questsDone : [];
+    p.level = r.level;
+    p.xp = r.xp; p.sp = r.sp;
+    p.skills = r.skills;
+    p.passives = r.passives;
+    p.gold = r.gold;
+    p.inv = r.inv;
+    p.equip = r.equip; // equipment BEFORE the hp clamp (F08)
+    p.maxHp = systems.baseMaxHp(this, p.level, p.passives.tough); // recomputed (F14)
+    const eff = systems.effMaxHp(this, p);
+    p.hp = Math.min(r.hp > 0 ? r.hp : eff, eff); // clamp to EFFECTIVE max (F08)
+    p.quests = r.quests;
+    p.questsDone = r.questsDone;
     // cooldowns: absolute expiry -> remaining seconds (expired ones are dropped)
     p.cds = {};
-    for (const [k, exp] of Object.entries(rec.cdsExpiresAt || {})) {
-      if (exp > now) p.cds[k] = (exp - now) / 1000;
+    for (const [k, exp] of Object.entries(r.cdsExpiresAt)) {
+      if (typeof exp === 'number' && exp > now) p.cds[k] = (exp - now) / 1000;
     }
-    p.potionCd = Math.max(0, ((rec.potionCdExpiresAt || 0) - now) / 1000);
-    p.savedAt = rec.savedAt || 0;
-    // never reuse an item uid
-    for (const slot of p.inv) {
+    p.potionCd = Math.max(0, (r.potionCdExpiresAt - now) / 1000);
+    p.savedAt = r.savedAt;
+    // F09: death survives restart/resume. The countdown is an absolute
+    // timestamp, so it simply continues; an already-elapsed one respawns
+    // cleanly at the safe spawn with full effective HP.
+    p.dead = r.dead;
+    p.respawnAt = r.respawnAt;
+    if (p.dead) {
+      if (p.respawnAt > now) p.hp = 0;
+      else { p.dead = false; p.respawnAt = 0; p.hp = eff; }
+    }
+    // never reuse an item uid: scan inventory AND equipment (F13)
+    for (const slot of [...p.inv, p.equip.weapon, p.equip.armor]) {
       const m = slot && /^i(\d+)$/.exec(slot.uid || '');
       if (m) this.nextItemId = Math.max(this.nextItemId, Number(m[1]) + 1);
     }
@@ -180,6 +238,8 @@ class World {
       questsDone: [...p.questsDone],
       cdsExpiresAt,
       potionCdExpiresAt: now + Math.max(0, p.potionCd || 0) * 1000,
+      dead: !!p.dead, // F09: death state persists; the countdown continues on resume
+      respawnAt: p.respawnAt || 0,
       savedAt: now,
       lastSeen: now,
     };
@@ -206,10 +266,11 @@ class World {
   }
 
   /** Drop a loot item on the ground (single pickup — removed once taken). */
-  dropItem(item, x, y) {
+  dropItem(item, x, y, amount) {
     const it = {
       id: this.nextItemId++,
       item,
+      amount: amount || null, // F11: configured stack size rides with the item
       x: Math.round(x + (Math.random() * 40 - 20)),
       y: Math.round(y + (Math.random() * 40 - 20)),
       expiresAt: Date.now() + this.cfg.itemDespawnMs,
@@ -218,12 +279,20 @@ class World {
     return it;
   }
 
+  /**
+   * Private per-player state, sent ONLY to the owning socket as `me`
+   * in the state message (F12). Never broadcast.
+   */
+  playerSelf(p) {
+    return p.serializeSelf(systems.effMaxHp(this, p), this.cfg.xpNeed(p.level));
+  }
+
   snapshot() {
     return {
-      players: [...this.players.values()].map((p) => ({
-        ...p.serialize(),
-        xpNeed: this.cfg.xpNeed(p.level), // always in sync with the server curve
-      })),
+      // F12: public entity data only — inventory/quests/gold stay private.
+      // maxHp here is EFFECTIVE (base + armor), which is what the HUD draws (F08).
+      players: [...this.players.values()].map((p) =>
+        p.serializePublic(systems.effMaxHp(this, p))),
       monsters: this.monsters.map((m) => m.serialize()),
       projectiles: this.projectiles.map((pr) => ({
         id: pr.id, x: Math.round(pr.x), y: Math.round(pr.y),

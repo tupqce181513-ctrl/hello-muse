@@ -15,6 +15,7 @@ module.exports = {
   player: {
     speed: 200,       // px per second
     maxHp: 100,
+    hpPerLevel: 20,   // +max HP per level and per tough rank (single source of truth)
     attackRange: 80,
     attackCd: 0.45,   // seconds between swings
     baseDmg: 20,

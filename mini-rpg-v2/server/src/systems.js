@@ -100,7 +100,7 @@ function gainXp(world, p, amt) {
   while (p.xp >= need) {
     p.xp -= need;
     p.level++;
-    p.maxHp += 20;
+    p.maxHp = baseMaxHp(world, p.level, p.passives.tough);
     p.hp = effMaxHp(world, p);
     p.sp += 1; // one skill point per level
     need = world.cfg.xpNeed(p.level);
@@ -110,7 +110,16 @@ function gainXp(world, p, amt) {
 
 /* ---------------- Inventory & equipment ---------------- */
 
-/** Effective max HP = base + level/tough bonuses + equipped armor.
+/**
+ * Base max HP, derived from config + level + tough rank — the single source
+ * of truth. Restore recomputes this instead of trusting the save (F14).
+ */
+function baseMaxHp(world, level, tough) {
+  const c = world.cfg.player;
+  return c.maxHp + (level - 1) * c.hpPerLevel + (tough || 0) * c.hpPerLevel;
+}
+
+/** Effective max HP = base + equipped armor.
  *  Equipment is computed, never stacked into maxHp (no equip/unequip bug). */
 function effMaxHp(world, p) {
   const armor = p.equip.armor ? (world.cfg.items[p.equip.armor.item].bonus || {}).maxHp || 0 : 0;
@@ -212,18 +221,24 @@ function damageMonster(world, s, p, dmg) {
     s.dead = true;
     s.respawnAt = Date.now() + world.cfg.monsters[s.mtype].respawnMs;
     world.bus.emit('monster:killed', s, p);
+    // Last-hit XP goes to the killer — a separate, documented rule that does
+    // NOT grant quest credit. Quest credit for bosses flows ONLY through
+    // bossDown() and its co-op threshold (F10).
     gainXp(world, p, world.cfg.monsters[s.mtype].xp);
     dropLoot(world, s);
-    addKillCredit(world, p, s.mtype); // only the killer's active quests count
     if (s.boss) bossDown(world, s);
+    else addKillCredit(world, p, s.mtype); // only the killer's active quests count
   }
 }
 
 /**
- * Boss co-op rewards. Eligibility (announced in the quest text):
+ * Boss co-op rewards — the ONLY path to boss quest credit (F10).
+ * Eligibility (announced in the quest text):
  *   - dealt >= 5% of boss max HP during this boss's life, AND
  *   - still connected (disconnect removes your dmgBy entry).
  * Each eligible contributor is rewarded once per boss kill.
+ * (Last-hit XP is separate and stays with the killer — it never grants
+ * boss quest progress by itself.)
  */
 function bossDown(world, s) {
   const threshold = s.maxHp * 0.05;
@@ -312,23 +327,31 @@ function acceptQuest(world, p, qid) {
 }
 
 /**
- * Would `qty` of `item` fit in the bag right now? (Simulates giveItem
- * without mutating — used to validate rewards before granting them.)
+ * How many of `qty` would fit in the bag right now (no mutation).
+ * Used for partial ground-loot pickup and the pre-turn-in capacity check.
  */
-function canReceive(world, p, item, qty = 1) {
+function receivableQty(world, p, item, qty = 1) {
   const def = world.cfg.items[item];
-  if (!def) return false;
+  if (!def) return 0;
   if (def.stack) {
     let space = 0;
     for (const slot of p.inv) {
       if (slot && slot.item === item) space += 99 - slot.qty;
       else if (!slot) space += 99;
     }
-    return space >= qty;
+    return Math.min(qty, space);
   }
   let free = 0;
   for (const slot of p.inv) if (!slot) free++;
-  return free >= qty;
+  return Math.min(qty, free);
+}
+
+/**
+ * Would `qty` of `item` fit in the bag right now? (Simulates giveItem
+ * without mutating — used to validate rewards before granting them.)
+ */
+function canReceive(world, p, item, qty = 1) {
+  return receivableQty(world, p, item, qty) >= qty;
 }
 
 /**
@@ -374,13 +397,14 @@ function addKillCredit(world, p, target) {
   }
 }
 
-function addCollectCredit(world, p, item) {
+function addCollectCredit(world, p, item, n = 1) {
   for (const [qid, qs] of Object.entries(p.quests)) {
     if (qs.state !== 'active') continue;
     const q = questDef(world, qid);
     q.objectives.forEach((o, i) => {
       if (o.type === 'collect' && o.item === item && qs.progress[i] < o.count) {
-        qs.progress[i]++;
+        // credit by the amount ACTUALLY received (partial pickups count, F11)
+        qs.progress[i] = Math.min(o.count, qs.progress[i] + n);
         checkQuestComplete(world, p, qid);
       }
     });
@@ -400,7 +424,9 @@ function dropLoot(world, s) {
 
 /**
  * Auto-pickup on touch + despawn old loot. One pickup counts exactly once.
- * Gold goes straight to the wallet; items need a free bag slot.
+ * Gold goes straight to the wallet; items respect the configured amount and
+ * the bag's free space — a partial pickup leaves the remainder on the
+ * ground (updated atomically), and quest credit follows what was received.
  */
 function pickupTick(world) {
   const now = Date.now();
@@ -416,9 +442,14 @@ function pickupTick(world) {
           world.bus.emit('item:pickup', p, 'gold');
           continue;
         }
-        if (!giveItem(world, p, it.item, 1)) continue; // bag full: leave it
-        world.items.splice(i, 1); // removed from the world: cannot count twice
-        addCollectCredit(world, p, it.item);
+        // F11: honor the configured amount; take only what fits
+        const qty = it.amount || 1;
+        const fit = receivableQty(world, p, it.item, qty);
+        if (fit <= 0) continue; // bag full: leave the whole stack
+        giveItem(world, p, it.item, fit);
+        if (fit < qty) it.amount = qty - fit; // remainder stays, atomically
+        else world.items.splice(i, 1); // removed: cannot count twice
+        addCollectCredit(world, p, it.item, fit);
         world.bus.emit('item:pickup', p, it.item);
       }
     }
@@ -491,8 +522,8 @@ function allocatePassive(world, p, id) {
   p.sp -= 1;
   p.passives[id] = (p.passives[id] || 0) + 1;
   if (id === 'tough') {
-    p.maxHp += 20;
-    p.hp = Math.min(effMaxHp(world, p), p.hp + 20);
+    p.maxHp = baseMaxHp(world, p.level, p.passives.tough);
+    p.hp = Math.min(effMaxHp(world, p), p.hp + world.cfg.player.hpPerLevel);
   }
   return true;
 }
@@ -694,7 +725,7 @@ function respawn(world) {
   for (const p of world.players.values()) {
     if (p.dead && now >= p.respawnAt) {
       p.dead = false;
-      p.hp = p.maxHp;
+      p.hp = effMaxHp(world, p); // F08: full EFFECTIVE hp (armor counts)
       const s = world.randomSpawn(); // same clearance rules as initial spawn
       p.x = s.x; p.y = s.y;
       p.vx = 0; p.vy = 0;
@@ -711,4 +742,4 @@ function respawn(world) {
   }
 }
 
-module.exports = { movement, skillsTick, slimeAI, monsterAI, projectileTick, respawn, attack, hurtPlayer, gainXp, damageSlime, damageMonster, bossDown, unlockSkill, allocatePassive, castSkill, questStatus, checkQuestComplete, acceptQuest, turnInQuest, canReceive, addKillCredit, addCollectCredit, dropLoot, giveItem, invCount, equipItem, unequipItem, useItem, effMaxHp, weaponDmg, pickupTick, nearNpc, dialogFor, collide };
+module.exports = { movement, skillsTick, slimeAI, monsterAI, projectileTick, respawn, attack, hurtPlayer, gainXp, damageSlime, damageMonster, bossDown, unlockSkill, allocatePassive, castSkill, questStatus, checkQuestComplete, acceptQuest, turnInQuest, canReceive, receivableQty, addKillCredit, addCollectCredit, dropLoot, giveItem, invCount, equipItem, unequipItem, useItem, effMaxHp, baseMaxHp, weaponDmg, pickupTick, nearNpc, dialogFor, collide };

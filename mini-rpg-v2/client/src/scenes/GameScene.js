@@ -172,7 +172,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     // hero event triggers
-    const me = this.net.players.find((p) => p.id === this.net.myId);
+    const me = this.net.me();
     if (me) {
       if (this.prevLevel !== null && me.level > this.prevLevel) {
         sfx.levelup();

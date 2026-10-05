@@ -165,6 +165,24 @@ class JsonFileStore extends PlayerRepository {
     if (dropped) await this._persist();
     return dropped;
   }
+
+  /**
+   * Highest numeric item-uid sequence across ALL saved players (inventory
+   * AND equipment). Used at boot so a fresh world never reissues a uid that
+   * exists in any record — including records not yet restored (F13).
+   */
+  async maxItemSeq() {
+    const d = await this._ensure();
+    let max = 0;
+    for (const rec of Object.values(d.players)) {
+      const slots = [...(rec.inv || []), rec.equip && rec.equip.weapon, rec.equip && rec.equip.armor];
+      for (const s of slots) {
+        const m = s && /^i(\d+)$/.exec(s.uid || '');
+        if (m) max = Math.max(max, Number(m[1]));
+      }
+    }
+    return max;
+  }
 }
 
 module.exports = {
