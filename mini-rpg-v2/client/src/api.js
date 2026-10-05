@@ -1,25 +1,26 @@
 /**
- * Unified endpoint config. One source of truth for where the game server is:
+ * Unified endpoint config — same-origin everywhere:
  *
- *   VITE_WS_URL  - full WebSocket URL, e.g. ws://localhost:8080
- *                  (also used to derive the HTTP API base)
+ *   HTTP API : relative '/api/...'
+ *     dev  -> Vite proxies /api to the game server
+ *     prod -> Express serves the built client itself
+ *   WebSocket: '/ws' on the page's own host
+ *     dev  -> Vite proxies /ws (with ws:true) to the game server
+ *     prod -> same Express server (its ws endpoint accepts any path)
+ *
+ * Overrides (only when you really need them):
  *   VITE_API_URL - full HTTP API base, e.g. http://localhost:8080
- *                  (overrides the WS-derived one when set)
- *
- * When neither is set, the page's own origin is used (production: Express
- * serves the client build; dev: the Vite proxy forwards /api).
+ *   VITE_WS_URL  - full WebSocket URL, e.g. ws://localhost:8080
  */
-export const WS_URL =
-  import.meta.env.VITE_WS_URL ||
-  (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host;
+const WS_PROTO = location.protocol === 'https:' ? 'wss://' : 'ws://';
 
-/** Absolute URL for an API path like 'api/skins'. */
+export const WS_URL =
+  import.meta.env.VITE_WS_URL || WS_PROTO + location.host + '/ws';
+
+/** URL for an API path like 'api/skins' (relative by default, via proxy). */
 export function apiUrl(path) {
   const p = String(path).replace(/^\//, '');
   const apiBase = import.meta.env.VITE_API_URL;
   if (apiBase) return apiBase.replace(/\/$/, '') + '/' + p;
-  if (WS_URL.startsWith('ws://') || WS_URL.startsWith('wss://')) {
-    return WS_URL.replace(/^ws/, 'http') + '/' + p;
-  }
   return '/' + p;
 }

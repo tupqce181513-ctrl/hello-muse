@@ -312,19 +312,44 @@ function acceptQuest(world, p, qid) {
 }
 
 /**
+ * Would `qty` of `item` fit in the bag right now? (Simulates giveItem
+ * without mutating — used to validate rewards before granting them.)
+ */
+function canReceive(world, p, item, qty = 1) {
+  const def = world.cfg.items[item];
+  if (!def) return false;
+  if (def.stack) {
+    let space = 0;
+    for (const slot of p.inv) {
+      if (slot && slot.item === item) space += 99 - slot.qty;
+      else if (!slot) space += 99;
+    }
+    return space >= qty;
+  }
+  let free = 0;
+  for (const slot of p.inv) if (!slot) free++;
+  return free >= qty;
+}
+
+/**
  * Turn in a ready quest. Rewards are granted exactly once: the status flips
  * to 'done', so a repeated turn-in is ignored.
+ * F05: capacity is checked BEFORE any mutation — if the bag can't hold the
+ * reward item, the quest stays 'ready' and { error: 'bag_full' } is returned.
  */
 function turnInQuest(world, p, qid) {
   if (questStatus(world, p, qid) !== 'ready') return null;
   const q = questDef(world, qid);
+  if (q.finalReward && !canReceive(world, p, 'kings_blade', 1)) {
+    return { error: 'bag_full' };
+  }
   delete p.quests[qid];
   p.questsDone.push(qid);
   const rewards = q.rewards || {};
   if (rewards.xp) gainXp(world, p, rewards.xp);
   if (rewards.gold) p.gold += rewards.gold;
   if (q.finalReward) {
-    // the adventure's final reward: the King's Blade
+    // capacity was verified above: this cannot fail or be lost
     giveItem(world, p, 'kings_blade', 1);
     world.bus.emit('chat', {
       name: 'Server',
@@ -433,9 +458,25 @@ function dialogFor(world, p, npcId) {
   };
 }
 
+/**
+ * Look up a skill/passive definition by id, safe against prototype pollution:
+ * only OWN properties with a valid shape count. Never use cfg.skills.x[id]
+ * directly with user-controlled input.
+ */
+function activeDef(world, id) {
+  if (!Object.prototype.hasOwnProperty.call(world.cfg.skills.actives, id)) return null;
+  const def = world.cfg.skills.actives[id];
+  return def && typeof def.cost === 'number' && typeof def.cd === 'number' ? def : null;
+}
+function passiveDef(world, id) {
+  if (!Object.prototype.hasOwnProperty.call(world.cfg.skills.passives, id)) return null;
+  const def = world.cfg.skills.passives[id];
+  return def && typeof def.max === 'number' ? def : null;
+}
+
 /** Spend skill points to unlock an active skill. Returns true on success. */
 function unlockSkill(world, p, id) {
-  const def = world.cfg.skills.actives[id];
+  const def = activeDef(world, id);
   if (!def || p.skills.includes(id) || p.sp < def.cost) return false;
   p.sp -= def.cost;
   p.skills.push(id);
@@ -445,7 +486,7 @@ function unlockSkill(world, p, id) {
 
 /** Spend 1 point to level a passive (up to its max). Returns true on success. */
 function allocatePassive(world, p, id) {
-  const def = world.cfg.skills.passives[id];
+  const def = passiveDef(world, id);
   if (!def || p.sp < 1 || (p.passives[id] || 0) >= def.max) return false;
   p.sp -= 1;
   p.passives[id] = (p.passives[id] || 0) + 1;
@@ -458,7 +499,7 @@ function allocatePassive(world, p, id) {
 
 /** Trigger an unlocked active skill (checks cooldown). Returns true on success. */
 function castSkill(world, p, id) {
-  const def = world.cfg.skills.actives[id];
+  const def = activeDef(world, id);
   if (!def || p.dead || !p.skills.includes(id) || (p.cds[id] || 0) > 0) return false;
   if (id === 'dash') {
     p.dashT = 0.18;
@@ -670,4 +711,4 @@ function respawn(world) {
   }
 }
 
-module.exports = { movement, skillsTick, slimeAI, monsterAI, projectileTick, respawn, attack, hurtPlayer, gainXp, damageSlime, damageMonster, bossDown, unlockSkill, allocatePassive, castSkill, questStatus, checkQuestComplete, acceptQuest, turnInQuest, addKillCredit, addCollectCredit, dropLoot, giveItem, invCount, equipItem, unequipItem, useItem, effMaxHp, weaponDmg, pickupTick, nearNpc, dialogFor, collide };
+module.exports = { movement, skillsTick, slimeAI, monsterAI, projectileTick, respawn, attack, hurtPlayer, gainXp, damageSlime, damageMonster, bossDown, unlockSkill, allocatePassive, castSkill, questStatus, checkQuestComplete, acceptQuest, turnInQuest, canReceive, addKillCredit, addCollectCredit, dropLoot, giveItem, invCount, equipItem, unequipItem, useItem, effMaxHp, weaponDmg, pickupTick, nearNpc, dialogFor, collide };

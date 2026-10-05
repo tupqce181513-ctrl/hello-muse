@@ -17,6 +17,12 @@ const crypto = require('crypto');
 
 const SCHEMA_VERSION = 1;
 
+// How long a superseded token stays valid, so a client that never received
+// the rotated token can retry with the old one (F03). Overridable for tests.
+const TOKEN_GRACE_MS = Number(process.env.TOKEN_GRACE_MS) || 120000;
+// Far-future expiry marker (JSON-safe; Infinity does not survive stringify).
+const NO_EXPIRY = 9007199254740991;
+
 function hashToken(token) {
   return crypto.createHash('sha256').update(String(token)).digest('hex');
 }
@@ -31,9 +37,16 @@ class PlayerRepository {
   async getById(_id) { throw new Error('not implemented'); }
   async save(_record) { throw new Error('not implemented'); }
   async remove(_id) { throw new Error('not implemented'); }
+  /** Valid (unexpired) token entry: { id } | null */
+  async tokenEntry(_tokenHash) { throw new Error('not implemented'); }
   async tokenToId(_tokenHash) { throw new Error('not implemented'); }
   async bindToken(_tokenHash, _id) { throw new Error('not implemented'); }
-  async unbindToken(_tokenHash) { throw new Error('not implemented'); }
+  /**
+   * Rotate: the new token becomes current, the old one stays valid for the
+   * grace window so a lost welcome is recoverable via idempotent retry.
+   */
+  async supersedeToken(_oldHash, _newHash, _id) { throw new Error('not implemented'); }
+  async pruneTokens() { throw new Error('not implemented'); }
 }
 
 class JsonFileStore extends PlayerRepository {
@@ -60,6 +73,10 @@ class JsonFileStore extends PlayerRepository {
         throw new Error('bad schema');
       }
       this.data = parsed;
+      // migrate pre-grace token format { hash: playerId } -> { hash: { id, exp } }
+      for (const [h, e] of Object.entries(this.data.tokens)) {
+        if (typeof e === 'string') this.data.tokens[h] = { id: e, exp: NO_EXPIRY };
+      }
     } catch (err) {
       if (err.code !== 'ENOENT') {
         // corrupt file: back it up and start fresh rather than crash
@@ -73,18 +90,21 @@ class JsonFileStore extends PlayerRepository {
     }
   }
 
-  /** Queue an atomic write; concurrent saves never interleave. */
+  /**
+   * Queue an atomic write. F04: failures REJECT the returned promise — the
+   * caller decides what to do. The internal queue swallows the error only to
+   * stay alive for the next write; it never reports success falsely.
+   */
   _persist() {
-    this.queue = this.queue
-      .then(() => {
-        const dir = path.dirname(this.file);
-        fs.mkdirSync(dir, { recursive: true });
-        const tmp = this.file + '.tmp-' + process.pid;
-        fs.writeFileSync(tmp, JSON.stringify(this.data));
-        fs.renameSync(tmp, this.file); // atomic on POSIX
-      })
-      .catch((err) => console.error('[store] write failed:', err.message));
-    return this.queue;
+    const run = this.queue.then(() => {
+      const dir = path.dirname(this.file);
+      fs.mkdirSync(dir, { recursive: true });
+      const tmp = this.file + '.tmp-' + process.pid;
+      fs.writeFileSync(tmp, JSON.stringify(this.data));
+      fs.renameSync(tmp, this.file); // atomic on POSIX
+    });
+    this.queue = run.catch(() => {}); // keep the queue alive
+    return run;
   }
 
   async getById(id) {
@@ -95,37 +115,59 @@ class JsonFileStore extends PlayerRepository {
   async save(record) {
     const d = await this._ensure();
     d.players[record.id] = record;
-    await this._persist();
+    await this._persist(); // throws on I/O failure — caller must handle
   }
 
   async remove(id) {
     const d = await this._ensure();
     delete d.players[id];
-    for (const [h, pid] of Object.entries(d.tokens)) {
-      if (pid === id) delete d.tokens[h];
+    for (const [h, e] of Object.entries(d.tokens)) {
+      if (e.id === id) delete d.tokens[h];
     }
     await this._persist();
   }
 
-  async tokenToId(tokenHash) {
+  /** Unexpired token entry, or null. Lazily drops expired tokens. */
+  async tokenEntry(tokenHash) {
     const d = await this._ensure();
-    return d.tokens[tokenHash] || null;
+    const e = d.tokens[tokenHash];
+    if (!e) return null;
+    if (e.exp <= Date.now()) { delete d.tokens[tokenHash]; return null; }
+    return { id: e.id };
+  }
+
+  async tokenToId(tokenHash) {
+    const e = await this.tokenEntry(tokenHash);
+    return e ? e.id : null;
   }
 
   async bindToken(tokenHash, id) {
     const d = await this._ensure();
-    d.tokens[tokenHash] = id;
+    d.tokens[tokenHash] = { id, exp: NO_EXPIRY };
     await this._persist();
   }
 
-  async unbindToken(tokenHash) {
+  async supersedeToken(oldHash, newHash, id) {
     const d = await this._ensure();
-    delete d.tokens[tokenHash];
+    const old = d.tokens[oldHash];
+    if (old && old.id === id) old.exp = Date.now() + TOKEN_GRACE_MS;
+    d.tokens[newHash] = { id, exp: NO_EXPIRY };
     await this._persist();
+  }
+
+  async pruneTokens() {
+    const d = await this._ensure();
+    const now = Date.now();
+    let dropped = 0;
+    for (const [h, e] of Object.entries(d.tokens)) {
+      if (e.exp <= now) { delete d.tokens[h]; dropped++; }
+    }
+    if (dropped) await this._persist();
+    return dropped;
   }
 }
 
 module.exports = {
   PlayerRepository, JsonFileStore,
-  hashToken, newToken, newId, SCHEMA_VERSION,
+  hashToken, newToken, newId, SCHEMA_VERSION, TOKEN_GRACE_MS,
 };

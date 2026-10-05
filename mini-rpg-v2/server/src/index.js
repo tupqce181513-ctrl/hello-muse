@@ -23,10 +23,19 @@ const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '..', 'data');
 const store = new JsonFileStore(path.join(DATA_DIR, 'players.json'));
 
 async function savePlayer(p) {
-  if (!p) return;
-  const rec = world.toRecord(p);
-  p.savedAt = rec.savedAt;
-  await store.save(rec);
+  if (!p) return false;
+  // F04: savedAt is only updated AFTER the commit lands on disk.
+  // A failed write returns false (and logs) instead of claiming success.
+  // The 30s autosave acts as the retry — progress stays in RAM meanwhile.
+  try {
+    const rec = world.toRecord(p);
+    await store.save(rec);
+    p.savedAt = rec.savedAt;
+    return true;
+  } catch (e) {
+    console.error('[save] FAILED for', p.name, '-', e.message);
+    return false;
+  }
 }
 
 /* Autosave every 30s — never inside the tick loop.
@@ -35,6 +44,7 @@ async function savePlayer(p) {
 const AUTOSAVE_MS = 30000;
 setInterval(() => {
   for (const p of world.players.values()) savePlayer(p);
+  store.pruneTokens().catch((e) => console.error('[store] prune:', e.message));
 }, AUTOSAVE_MS);
 
 /** One active socket per character: a new connection replaces the old one. */
@@ -170,27 +180,29 @@ router.on('join', schemas.Join, async (ctx, m) => {
 
 router.on('resume', schemas.Resume, async (ctx, m) => {
   if (!checkRate(ctx, 'resume') || ctx.player) return;
-  const oldHash = hashToken(m.token);
-  const id = await store.tokenToId(oldHash);
-  const rec = id ? await store.getById(id) : null;
+  const h = hashToken(m.token);
+  const entry = await store.tokenEntry(h);
+  const rec = entry ? await store.getById(entry.id) : null;
   if (!rec) {
     ctx.ws.send(JSON.stringify({ t: 'resume_failed', reason: 'invalid_token' }));
     return;
   }
-  await store.unbindToken(oldHash); // token rotation: old token dies here
-  let p = ctx.world.players.get(id);
+  // F03: rotate, but keep the presented token valid through the grace window.
+  // If the welcome never reaches the client, retrying with the old token
+  // still works (idempotent) instead of locking the player out.
+  const newTok = newToken();
+  await store.supersedeToken(h, hashToken(newTok), rec.id);
+  let p = ctx.world.players.get(rec.id);
   if (!p) p = ctx.world.restorePlayer(rec); // e.g. after a server restart
   // else: player object is live — it is fresher than the save, keep it
   ctx.player = p;
   attachSocket(p, ctx.ws);
-  const token = newToken();
-  await store.bindToken(hashToken(token), p.id);
   await savePlayer(p);
   ctx.ws.send(JSON.stringify({
     t: 'welcome',
     id: p.id,
     name: p.name,
-    token,
+    token: newTok,
     resumed: true,
     map: ctx.world.map,
     npcs: config.npcs,
@@ -256,7 +268,14 @@ router.on('quest_turnin', schemas.QuestTurnIn, (ctx, m) => {
   if (!p) return;
   const q = ctx.world.cfg.quests.find((qq) => qq.id === m.quest);
   if (!q || !systems.nearNpc(ctx.world, p, q.giver)) return;
-  if (systems.turnInQuest(ctx.world, p, m.quest)) {
+  const res = systems.turnInQuest(ctx.world, p, m.quest);
+  if (res && res.error === 'bag_full') {
+    // F05: quest stays 'ready' — the reward waits until there is room
+    ctx.ws.send(JSON.stringify(systems.dialogFor(ctx.world, p, q.giver)));
+    ctx.world.addChat('Server', `🎒 ${p.name}: túi đầy! Dọn chỗ rồi quay lại trả "${q.name}".`);
+    return;
+  }
+  if (res) {
     ctx.ws.send(JSON.stringify(systems.dialogFor(ctx.world, p, q.giver)));
   }
 });
@@ -285,16 +304,27 @@ wss.on('connection', (ws) => {
   const ctx = { ws, world, player: null };
   ws.isAlive = true;
   ws.on('pong', () => { ws.isAlive = true; });
-  ws.on('message', (raw) => router.handle(ctx, raw));
-  ws.on('close', async () => {
+  // F02: protocol errors (e.g. max payload exceeded) are 'error' events on the
+  // socket. Without a listener they become unhandled and kill the process.
+  // Drop and clean up ONLY the offending connection; everyone else keeps playing.
+  const cleanup = () => {
+    if (ctx.cleaned) return;
+    ctx.cleaned = true;
     // only the active socket owns the player; a replaced ghost closing
     // must not delete the player the new connection is using
     if (ctx.player && ctx.player.ws === ws) {
       ctx.player.ws = null;
-      await savePlayer(ctx.player); // save on disconnect
+      savePlayer(ctx.player).catch((e) => console.error('[save] on disconnect:', e.message));
       world.removePlayer(ctx.player.id);
     }
+  };
+  ws.on('error', (err) => {
+    console.error('[ws] socket error, dropping connection:', err.message);
+    cleanup();
+    try { ws.terminate(); } catch { /* already gone */ }
   });
+  ws.on('message', (raw) => router.handle(ctx, raw));
+  ws.on('close', () => { cleanup(); });
 });
 
 /* --- Main loop: fixed-timestep simulation, snapshot broadcast --- */
