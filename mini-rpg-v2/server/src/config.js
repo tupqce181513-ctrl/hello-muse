@@ -128,7 +128,8 @@ module.exports = {
   // --- Quests ---
   // states per player: available -> active -> ready -> done (claimed).
   // Kill credit rule (announced in quest text): only the killing blow counts,
-  // and only while the quest is active.
+  // and only while the quest is active — EXCEPT the boss, whose quest credit
+  // goes through the co-op damage threshold in bossDown() (see F10).
   quests: [
     {
       id: 'slime_hunt',

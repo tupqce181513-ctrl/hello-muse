@@ -9,7 +9,8 @@
  *   (temp file + rename), so a crash never leaves a half-written file.
  * - Resume tokens are stored only as SHA-256 hashes. The raw token lives
  *   on the player's device (localStorage) and is never written to disk.
- * - File format: { schemaVersion, players: { id: record }, tokens: { hash: id } }
+ * - File format: { schemaVersion, players: { id: record }, tokens: { hash: { id, exp } } }
+ *   (exp = expiry timestamp; a superseded token stays valid through its grace window)
  */
 const fs = require('fs');
 const path = require('path');
