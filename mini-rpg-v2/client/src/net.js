@@ -21,6 +21,7 @@ export class Net extends Phaser.Events.EventEmitter {
     this.ws = null;
     this.myId = null;
     this.players = [];
+    this.self = null; // F12: private state, sent only to the owning socket as `me`
     this.monsters = []; this.projectiles = [];
     this.items = [];
     this.dmg = [];
@@ -86,6 +87,7 @@ export class Net extends Phaser.Events.EventEmitter {
         this.emit('resume_failed', m);
       } else if (m.t === 'state') {
         this.players = m.players;
+        this.self = m.me || null; // private state (inv/quests/gold) — never in players[]
         this.monsters = m.monsters; this.projectiles = m.projectiles || [];
         this.items = m.items || [];
         this.dmg = m.dmg || []; // per-tick server damage events
@@ -130,6 +132,7 @@ export class Net extends Phaser.Events.EventEmitter {
   }
 
   me() {
-    return this.players.find((p) => p.id === this.myId);
+    // prefer the private `me` payload; fall back to the public list
+    return this.self || this.players.find((p) => p.id === this.myId);
   }
 }

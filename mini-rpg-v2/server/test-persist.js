@@ -92,11 +92,14 @@ const tmpFile = () => path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'rpg-')), 
   ok(q.name === 'Hero4' && q.skinId === 'ranger', 'name/skin restored');
   ok(q.level === 7 && q.xp === 42 && q.sp === 3, 'level/xp/sp restored');
   ok(q.skills.includes('dash') && q.passives.power === 2, 'skills/passives restored');
-  ok(q.gold === 123 && q.maxHp === 160 && q.hp === 99, 'gold/hp restored');
+  ok(q.gold === 123, 'gold restored');
+  // F14: base max HP is RECOMPUTED (100 + 6*20 + 1*20 = 240), not trusted from the save
+  ok(q.maxHp === 240, 'base maxHp recomputed from level/tough, not from record');
+  ok(q.hp === 99, 'hp restored and clamped');
   ok(systems.invCount(q, 'potion') === 4, 'inventory restored');
   ok(q.equip.weapon && q.equip.weapon.item === 'sword_iron', 'equipment restored');
   ok(systems.weaponDmg(world2, q) === 12, 'derived weapon damage recomputed');
-  ok(systems.effMaxHp(world2, q) === 160, 'derived max HP (no armor stacking)');
+  ok(systems.effMaxHp(world2, q) === 240, 'derived max HP (no armor stacking)');
   ok(q.quests.slime_hunt.progress[0] === 3 && q.questsDone.includes('x'), 'quests restored');
   ok(Math.abs(q.cds.dash - 4.2) < 0.5, 'skill cooldown resumes (not reset)');
   ok(Math.abs(q.potionCd - 2.5) < 0.5, 'potion cooldown resumes');

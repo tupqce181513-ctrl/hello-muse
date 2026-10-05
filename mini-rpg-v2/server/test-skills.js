@@ -76,7 +76,7 @@ systems.skillsTick(world, 10);
 ok(!('dash' in p.cds), 'cooldown expires');
 
 // --- serialize carries skill state ---
-const snap = p.serialize();
+const snap = p.serializeSelf(p.maxHp, 100);
 ok(snap.sp >= 0 && snap.skills.includes('dash') && snap.passives.power === 2, 'snapshot has skill state');
 ok(typeof snap.cds === 'object' && snap.castSeq === 3, 'snapshot has cds + castSeq');
 

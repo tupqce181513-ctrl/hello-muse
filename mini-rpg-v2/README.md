@@ -46,6 +46,9 @@ mini-rpg-v2/
 
 **Nguyên tắc:**
 - Server là *authoritative*: mọi logic game nằm ở `systems.js`, client chỉ vẽ lại snapshot.
+- Snapshot `state` gửi cho mọi socket chỉ chứa dữ liệu render công khai; trạng
+  thái riêng (túi, quest, vàng, skill) đi kèm trong trường `me` **chỉ socket sở
+  hữu mới nhận**. Thanh HP vẽ theo max HP hiệu dụng (gốc + giáp).
 - Giao tiếp qua **event bus** (`world.bus`): `player:join`, `slime:killed`, `chat`...
   Muốn thêm tính năng (thông báo, lưu DB, log) → chỉ cần `bus.on(...)`, không sửa loop.
 - Message mới: thêm zod schema + `router.on(...)` là xong, client cũ không ảnh hưởng.
@@ -137,7 +140,9 @@ Nhạc và SFX được tổng hợp bằng Web Audio API nên không cần file
 ### Co-op Boss
 Quy tắc (ghi trong mô tả quest): gây **ít nhất 5% sát thương** lên Boss và **còn
 online** khi Boss gục → nhận thưởng (quest credit + 150 XP + 50 vàng), một lần
-mỗi lượt Boss. Ngắt kết nối = mất đóng góp. Người dưới ngưỡng không được gì.
+mỗi lượt Boss. Ngắt kết nối = mất đóng góp. Người dưới ngưỡng không được gì —
+kể cả người ra đòn kết liễu: **XP last-hit vẫn thuộc về người kết liễu** (quy
+tắc riêng, đã ghi rõ), nhưng **quest credit Boss chỉ đi qua ngưỡng co-op**.
 
 ### Inventory & trang bị
 - Túi **12 ô** (nút 🎒 hoặc phím `I`): Mảnh Slime, Vàng, **Thuốc hồi máu** 🧪
@@ -146,7 +151,9 @@ mỗi lượt Boss. Ngắt kết nối = mất đóng góp. Người dưới ng�
 - Nhấn vào trang bị để mặc/tháo, nhấn thuốc để dùng. Server kiểm tra: quyền sở
   hữu (uid), khoảng cách nhặt, túi đầy, cooldown, trạng thái chết.
 - Chỉ số trang bị **tính động**, không cộng dồn khi tháo/lắp nhiều lần.
-- Vàng rơi ra đất (🪙) tự nhặt thẳng vào ví.
+- Vàng rơi ra đất (🪙) tự nhặt thẳng vào ví. Loot giữ **đúng số lượng cấu hình**
+  (ví dụ Boss: 100–200 vàng, 2–3 thuốc); nhặt một phần thì phần còn lại ở yên
+  trên đất, quest "nhặt" tính theo số thực nhận.
 
 ### Quest Boss
 Chuỗi hoàn chỉnh: Diệt Slime → Mảnh Slime → **Thách đấu Slime King**.
@@ -205,7 +212,9 @@ chuyến phiêu lưu, kèm thông báo toàn server.
 ### Người mới & cài đặt
 - **Hướng dẫn nhanh** 📖 hiện lần đầu vào game (lưu cờ localStorage), mở lại
   bằng nút ❓.
-- **Màn hình chết** 💀 với đếm ngược hồi sinh lấy từ server + mẹo chơi.
+- **Màn hình chết** 💀 với đếm ngược hồi sinh lấy từ server + mẹo chơi. Chết rồi
+  thoát game cũng không thoát được: nối lại vẫn thấy đếm ngược tiếp tục (hoặc
+  đã hồi sinh xong nếu hết giờ).
 - **Nhạc và SFX chỉnh riêng** (🔊/🔔), nhớ lựa chọn trên thiết bị.
 
 ### Hiệu năng

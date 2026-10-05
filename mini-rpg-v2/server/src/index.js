@@ -302,6 +302,7 @@ router.on('chat', schemas.Chat, (ctx, m) => {
 
 wss.on('connection', (ws) => {
   const ctx = { ws, world, player: null };
+  conns.add(ctx);
   ws.isAlive = true;
   ws.on('pong', () => { ws.isAlive = true; });
   // F02: protocol errors (e.g. max payload exceeded) are 'error' events on the
@@ -310,6 +311,7 @@ wss.on('connection', (ws) => {
   const cleanup = () => {
     if (ctx.cleaned) return;
     ctx.cleaned = true;
+    conns.delete(ctx);
     // only the active socket owns the player; a replaced ghost closing
     // must not delete the player the new connection is using
     if (ctx.player && ctx.player.ws === ws) {
@@ -327,8 +329,21 @@ wss.on('connection', (ws) => {
   ws.on('close', () => { cleanup(); });
 });
 
+/* --- boot: the item-uid counter must start above every uid in every saved
+ * record (inventory + equipment), or a restart reissues live uids (F13) --- */
+(async () => {
+  try {
+    world.nextItemId = (await store.maxItemSeq()) + 1;
+  } catch (e) {
+    console.error('[store] maxItemSeq failed, starting item uids at 1:', e.message);
+  }
+})();
+
 /* --- Main loop: fixed-timestep simulation, snapshot broadcast --- */
 let last = Date.now();
+// F12: every socket gets the PUBLIC snapshot; the owning socket additionally
+// gets its private state as `me`. Inventory/quests/gold are never broadcast.
+const conns = new Set();
 setInterval(() => {
   const now = Date.now();
   const dt = Math.min(0.1, (now - last) / 1000);
@@ -339,7 +354,18 @@ setInterval(() => {
   systems.projectileTick(world, dt);
   systems.pickupTick(world);
   systems.respawn(world);
-  broadcast({ t: 'state', ...world.snapshot() });
+  const snap = world.snapshot();
+  const publicJson = JSON.stringify({ t: 'state', ...snap });
+  for (const ctx of conns) {
+    if (ctx.ws.readyState !== WebSocket.OPEN) continue;
+    if (ctx.player) {
+      ctx.ws.send(JSON.stringify({
+        t: 'state', ...snap, me: world.playerSelf(ctx.player),
+      }));
+    } else {
+      ctx.ws.send(publicJson);
+    }
+  }
   world.dmgEvents.length = 0; // damage numbers are per-tick events
 }, config.tickMs);
 
